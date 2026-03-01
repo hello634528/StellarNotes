@@ -23,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -207,7 +206,7 @@ private fun EditorSheet(
                 Text(if (note == null) "新建星际笔记" else "编辑笔记", color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 if (note != null) {
                     IconButton(onClick = { onPinToggle(note) }) { Icon(Icons.Default.PushPin, null, tint = Color(0xFFAED7FF)) }
-                    IconButton(onClick = { onStarToggle(note) }) { Icon(if (note.starred) Icons.Default.Star else Icons.Outlined.StarBorder, null, tint = if (note.starred) Color(0xFFFFD86B) else Color.White) }
+                    IconButton(onClick = { onStarToggle(note) }) { Icon(Icons.Default.Star, null, tint = if (note.starred) Color(0xFFFFD86B) else Color(0x77FFFFFF)) }
                     IconButton(onClick = { onDelete(note) }) { Icon(Icons.Default.Delete, null, tint = Color(0xFFFF8A8A)) }
                 }
             }

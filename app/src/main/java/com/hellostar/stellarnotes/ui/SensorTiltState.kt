@@ -8,45 +8,51 @@ import android.hardware.SensorManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 
-data class Tilt(val x: Float = 0f, val y: Float = 0f)
+data class Tilt(val x: Float, val y: Float)
 
 @Composable
 fun rememberTiltState(): Tilt {
     val context = LocalContext.current
-    var tilt by remember { mutableStateOf(Tilt()) }
+    var tx by remember { mutableFloatStateOf(0f) }
+    var ty by remember { mutableFloatStateOf(0f) }
 
-    DisposableEffect(context) {
+    DisposableEffect(Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val acc = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val gyro = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+        val accSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val gyroSensor = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
 
-        val l = object : SensorEventListener {
-            private var gx = 0f
-            private var gy = 0f
-            override fun onSensorChanged(e: SensorEvent) {
-                when (e.sensor.type) {
+        var gx = 0f
+        var gy = 0f
+
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                when (event.sensor.type) {
                     Sensor.TYPE_ACCELEROMETER -> {
-                        val ax = e.values[0] / 9.81f
-                        val ay = e.values[1] / 9.81f
-                        tilt = Tilt(((-ax * 0.6f) + gx * 0.4f).coerceIn(-1.2f, 1.2f), ((ay * 0.6f) + gy * 0.4f).coerceIn(-1.2f, 1.2f))
+                        val ax = event.values[0] / 9.81f
+                        val ay = event.values[1] / 9.81f
+                        tx = ((-ax * 0.6f) + gx * 0.4f).coerceIn(-1.2f, 1.2f)
+                        ty = ((ay * 0.6f) + gy * 0.4f).coerceIn(-1.2f, 1.2f)
                     }
                     Sensor.TYPE_GYROSCOPE -> {
-                        gx = (gx * 0.92f + e.values[1] * 0.08f).coerceIn(-1.5f, 1.5f)
-                        gy = (gy * 0.92f + e.values[0] * 0.08f).coerceIn(-1.5f, 1.5f)
+                        gx = (gx * 0.92f + event.values[1] * 0.08f).coerceIn(-1.5f, 1.5f)
+                        gy = (gy * 0.92f + event.values[0] * 0.08f).coerceIn(-1.5f, 1.5f)
                     }
                 }
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
 
-        acc?.let { sm.registerListener(l, it, SensorManager.SENSOR_DELAY_GAME) }
-        gyro?.let { sm.registerListener(l, it, SensorManager.SENSOR_DELAY_GAME) }
-        onDispose { sm.unregisterListener(l) }
+        accSensor?.let { sm.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+        gyroSensor?.let { sm.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+
+        onDispose {
+            sm.unregisterListener(listener)
+        }
     }
-    return tilt
+    return Tilt(tx, ty)
 }

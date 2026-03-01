@@ -13,35 +13,81 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
+data class StellarUiState(
+    val notes: List<Note> = emptyList(),
+    val query: String = "",
+    val searchResults: List<SearchResult> = emptyList(),
+    val focusedNoteId: Long? = null
+)
+
+data class SearchResult(
+    val note: Note,
+    val score: Double
+)
+
 class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
+
     private val query = MutableStateFlow("")
     private val focusNoteId = MutableStateFlow<Long?>(null)
 
     val uiState: StateFlow<StellarUiState> = combine(
         repo.observeNotes(), query, focusNoteId
     ) { notes, q, focus ->
-        StellarUiState(notes, q, rankNotes(notes, q), focus)
+        StellarUiState(
+            notes = notes,
+            query = q,
+            searchResults = rankNotes(notes, q),
+            focusedNoteId = focus
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StellarUiState())
 
-    fun onQueryChange(v: String) { query.value = v }
-    fun focusOn(id: Long?) { focusNoteId.value = id }
+    fun onQueryChange(v: String) {
+        query.value = v
+    }
+
+    fun focusOn(id: Long?) {
+        focusNoteId.value = id
+    }
 
     fun addOrUpdate(old: Note?, title: String, content: String, pinned: Boolean, starred: Boolean) {
         if (title.isBlank() && content.isBlank()) return
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val n = if (old == null) {
-                Note(title = title.ifBlank { "无标题" }, content = content, createdAt = now, updatedAt = now, pinned = pinned, starred = starred)
+            val finalTitle = title.ifBlank { "\u65E0\u6807\u9898" }
+            if (old == null) {
+                repo.upsert(
+                    Note(
+                        title = finalTitle, content = content,
+                        createdAt = now, updatedAt = now,
+                        pinned = pinned, starred = starred
+                    )
+                )
             } else {
-                old.copy(title = title.ifBlank { "无标题" }, content = content, updatedAt = now, pinned = pinned, starred = starred)
+                repo.upsert(
+                    old.copy(
+                        title = finalTitle, content = content,
+                        updatedAt = now, pinned = pinned, starred = starred
+                    )
+                )
             }
-            repo.upsert(n)
         }
     }
 
-    fun togglePin(n: Note) = viewModelScope.launch { repo.upsert(n.copy(pinned = !n.pinned, updatedAt = System.currentTimeMillis())) }
-    fun toggleStar(n: Note) = viewModelScope.launch { repo.upsert(n.copy(starred = !n.starred, updatedAt = System.currentTimeMillis())) }
-    fun delete(n: Note) = viewModelScope.launch { repo.delete(n) }
+    fun togglePin(n: Note) {
+        viewModelScope.launch {
+            repo.upsert(n.copy(pinned = !n.pinned, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun toggleStar(n: Note) {
+        viewModelScope.launch {
+            repo.upsert(n.copy(starred = !n.starred, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun deleteNote(n: Note) {
+        viewModelScope.launch { repo.delete(n) }
+    }
 
     private fun rankNotes(notes: List<Note>, q: String): List<SearchResult> {
         if (q.isBlank()) return notes.map { SearchResult(it, 0.0) }
@@ -50,21 +96,21 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
             val t = n.title.lowercase()
             val c = n.content.lowercase()
             var score = 0.0
-            tokens.forEach { k ->
-                if (t == k) score += 120
-                if (t.startsWith(k)) score += 65
-                if (t.contains(k)) score += 36
-                if (c.contains(k)) score += 18
-                score += fuzzy(k, t) * 24 + fuzzy(k, c) * 10
+            for (k in tokens) {
+                if (t == k) score += 120.0
+                if (t.startsWith(k)) score += 65.0
+                if (t.contains(k)) score += 36.0
+                if (c.contains(k)) score += 18.0
+                score += fuzzyMatch(k, t) * 24.0 + fuzzyMatch(k, c) * 10.0
             }
-            if (n.pinned) score += 12
-            if (n.starred) score += 8
-            score += max(0.0, 14 - (System.currentTimeMillis() - n.updatedAt) / 86_400_000.0)
+            if (n.pinned) score += 12.0
+            if (n.starred) score += 8.0
+            score += max(0.0, 14.0 - (System.currentTimeMillis() - n.updatedAt).toDouble() / 86400000.0)
             SearchResult(n, score)
-        }.sortedByDescending { it.score }.filter { it.score > 8 }
+        }.filter { it.score > 8.0 }.sortedByDescending { it.score }
     }
 
-    private fun fuzzy(a: String, b: String): Double {
+    private fun fuzzyMatch(a: String, b: String): Double {
         if (a.isBlank() || b.isBlank()) return 0.0
         val dp = IntArray(b.length + 1)
         var best = 0
@@ -73,7 +119,7 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
             for (j in 1..b.length) {
                 val tmp = dp[j]
                 dp[j] = if (a[i] == b[j - 1]) prev + 1 else 0
-                best = max(best, dp[j])
+                if (dp[j] > best) best = dp[j]
                 prev = tmp
             }
         }
@@ -81,15 +127,11 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
     }
 }
 
-class StellarViewModelFactory(private val repo: NoteRepository) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T = StellarViewModel(repo) as T
+@Suppress("UNCHECKED_CAST")
+class StellarViewModelFactory(
+    private val repo: NoteRepository
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return StellarViewModel(repo) as T
+    }
 }
-
-data class StellarUiState(
-    val notes: List<Note> = emptyList(),
-    val query: String = "",
-    val searchResults: List<SearchResult> = emptyList(),
-    val focusedNoteId: Long? = null
-)
-
-data class SearchResult(val note: Note, val score: Double)

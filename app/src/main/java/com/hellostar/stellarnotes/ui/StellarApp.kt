@@ -8,8 +8,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,24 +46,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hellostar.stellarnotes.data.Note
-import kotlin.math.absoluteValue
-import kotlin.math.cos
-import kotlin.math.sin
 
 private val DeepBlue = Color(0xFF040A1E)
-private val StarWhite = Color(0xFFD7E7FF)
 private val StarGold = Color(0xFFFFD86B)
 private val PinBlue = Color(0xFF9FD4FF)
 private val PanelBg = Color(0x88112244)
@@ -73,6 +67,79 @@ private val CardBg = Color(0xEE0D1C42)
 
 @Composable
 fun StellarApp(viewModel: StellarViewModel) {
+    var showIntro by rememberSaveable { mutableStateOf(true) }
+
+    if (showIntro) {
+        IntroScreen(onDismiss = { showIntro = false })
+    } else {
+        MainScreen(viewModel = viewModel)
+    }
+}
+
+@Composable
+private fun IntroScreen(onDismiss: () -> Unit) {
+    Surface(modifier = Modifier.fillMaxSize(), color = DeepBlue) {
+        Box(
+            modifier = Modifier.fillMaxSize().clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(40.dp)
+            ) {
+                Text(
+                    text = "\u2728",
+                    fontSize = 72.sp
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = "\u661f\u6f9c\u7b14\u8bb0",
+                    color = Color.White,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "NebulaNotes",
+                    color = PinBlue,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Light
+                )
+                Spacer(Modifier.height(32.dp))
+                Text(
+                    text = "\u6bcf\u4e00\u6761\u7b14\u8bb0\uff0c\u90fd\u662f\u4f60\u7684\u4e00\u9897\u661f",
+                    color = Color(0xCCFFFFFF),
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(12.dp))
+                val features = listOf(
+                    "\u2b50  \u661f\u6807\u7b14\u8bb0\u53d8\u6210\u91d1\u8272\u661f\u4f53",
+                    "\uD83D\uDCCC  \u7f6e\u9876\u7b14\u8bb0\u79bb\u4f60\u6700\u8fd1",
+                    "\uD83D\uDD0D  \u667a\u80fd\u641c\u7d22 + \u4e1d\u6ed1\u8fd0\u955c\u5b9a\u4f4d",
+                    "\uD83D\uDCF1  \u8f7b\u6643\u624b\u673a\uff0c\u661f\u7a7a\u8ddf\u7740\u52a8",
+                    "\u2604\uFE0F  \u6d41\u661f\u5212\u8fc7\u6df1\u84dd\u661f\u7a7a"
+                )
+                for (f in features) {
+                    Text(
+                        text = f,
+                        color = Color(0xAAFFFFFF),
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(vertical = 3.dp)
+                    )
+                }
+                Spacer(Modifier.height(40.dp))
+                Text(
+                    text = "\u70b9\u51fb\u4efb\u610f\u4f4d\u7f6e\u8fdb\u5165\u661f\u7a7a",
+                    color = Color(0x77FFFFFF),
+                    fontSize = 13.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MainScreen(viewModel: StellarViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<Note?>(null) }
     var showEditor by remember { mutableStateOf(false) }
@@ -91,7 +158,7 @@ fun StellarApp(viewModel: StellarViewModel) {
 
     Surface(modifier = Modifier.fillMaxSize(), color = DeepBlue) {
         Box(modifier = Modifier.fillMaxSize()) {
-            StarFieldCanvas(
+            StarFieldView(
                 notes = state.notes,
                 tilt = tilt,
                 camX = cameraX.value,
@@ -170,7 +237,7 @@ private fun SearchBar(
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
-                label = { Text("搜索笔记…", color = Color(0xAAFFFFFF)) },
+                label = { Text("\u641c\u7d22\u661f\u7fa4\u7b14\u8bb0\u2026", color = Color(0xAAFFFFFF)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -223,85 +290,6 @@ private fun SearchBar(
     }
 }
 
-data class StarPos(val x: Float, val y: Float, val z: Float)
-
-private fun computeStarPosition(note: Note, all: List<Note>): StarPos {
-    val sorted = all.sortedWith(
-        compareByDescending<Note> { it.pinned }.thenBy { it.createdAt }
-    )
-    val idx = sorted.indexOfFirst { it.id == note.id }.coerceAtLeast(0)
-    val ring = idx / 10 + 1
-    val slot = idx % 10
-    val angleDeg = slot * 36f + ring * 15f
-    val rad = Math.toRadians(angleDeg.toDouble())
-    val dist = if (note.pinned) 75f else 130f + ring * 40f
-    return StarPos(
-        x = (cos(rad) * dist).toFloat(),
-        y = (sin(rad) * dist * 0.72f).toFloat(),
-        z = ring * 30f - (if (note.pinned) 20f else 0f)
-    )
-}
-
-@Composable
-private fun StarFieldCanvas(
-    notes: List<Note>,
-    tilt: Tilt,
-    camX: Float,
-    camY: Float,
-    onTapNote: (Note) -> Unit
-) {
-    val bg = Brush.verticalGradient(
-        listOf(Color(0xFF030712), Color(0xFF071739), Color(0xFF0A1E48))
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(bg)
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val cx = center.x
-            val cy = center.y
-            val tiltX = tilt.x * 80f
-            val tiltY = tilt.y * 80f
-
-            for (note in notes) {
-                val pos = computeStarPosition(note, notes)
-                val depth = 1f / (1f + pos.z.absoluteValue / 220f)
-                val sx = cx + (pos.x + camX + tiltX) * depth
-                val sy = cy + (pos.y + camY + tiltY) * depth
-
-                val baseRadius = if (note.pinned) 11f else 7f
-                val starMul = if (note.starred) 1.2f else 1f
-                val r = baseRadius * depth * starMul
-
-                val color = when {
-                    note.starred -> StarGold
-                    note.pinned -> PinBlue
-                    else -> StarWhite
-                }
-
-                drawCircle(color = color.copy(alpha = 0.12f), radius = r * 3.5f, center = Offset(sx, sy))
-                drawCircle(color = color.copy(alpha = 0.28f), radius = r * 2f, center = Offset(sx, sy))
-                drawCircle(color = color, radius = r, center = Offset(sx, sy))
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .clickable {
-                    val nearest = notes.minByOrNull { n ->
-                        val p = computeStarPosition(n, notes)
-                        val dx = p.x + camX + tilt.x * 80f
-                        val dy = p.y + camY + tilt.y * 80f
-                        dx * dx + dy * dy
-                    }
-                    nearest?.let(onTapNote)
-                }
-        )
-    }
-}
-
 @Composable
 private fun NoteEditorSheet(
     note: Note?,
@@ -324,7 +312,7 @@ private fun NoteEditorSheet(
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (note == null) "新建笔记" else "编辑笔记",
+                    text = if (note == null) "\u65b0\u5efa\u661f\u9645\u7b14\u8bb0" else "\u7f16\u8f91\u7b14\u8bb0",
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f)
@@ -365,7 +353,7 @@ private fun NoteEditorSheet(
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("标题", color = Color(0xAAFFFFFF)) },
+                label = { Text("\u6807\u9898", color = Color(0xAAFFFFFF)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -382,7 +370,7 @@ private fun NoteEditorSheet(
             OutlinedTextField(
                 value = content,
                 onValueChange = { content = it },
-                label = { Text("内容", color = Color(0xAAFFFFFF)) },
+                label = { Text("\u5185\u5bb9", color = Color(0xAAFFFFFF)) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -402,7 +390,7 @@ private fun NoteEditorSheet(
                 horizontalArrangement = Arrangement.End
             ) {
                 TextButton(onClick = onDismiss) {
-                    Text("取消", color = Color(0xAAFFFFFF))
+                    Text("\u53d6\u6d88", color = Color(0xAAFFFFFF))
                 }
                 Spacer(Modifier.width(12.dp))
                 Button(
@@ -418,7 +406,7 @@ private fun NoteEditorSheet(
                     ),
                     modifier = Modifier.width(120.dp)
                 ) {
-                    Text("保存")
+                    Text("\u4fdd\u5b58")
                 }
             }
         }

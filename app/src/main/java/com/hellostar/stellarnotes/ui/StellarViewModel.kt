@@ -32,7 +32,7 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
 
     val uiState: StateFlow<StellarUiState> = combine(
         repo.observeNotes(), query, focusNoteId
-    ) { notes, q, focus ->
+    ) { notes: List<Note>, q: String, focus: Long? ->
         StellarUiState(
             notes = notes,
             query = q,
@@ -53,7 +53,7 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
         if (title.isBlank() && content.isBlank()) return
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val finalTitle = title.ifBlank { "\u65E0\u6807\u9898" }
+            val finalTitle = title.ifBlank { "无标题" }
             if (old == null) {
                 repo.upsert(
                     Note(

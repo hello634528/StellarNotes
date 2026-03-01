@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -132,8 +131,8 @@ fun StellarApp(viewModel: StellarViewModel) {
 
             AnimatedVisibility(
                 visible = showEditor,
-                enter = slideInVertically { it } + fadeIn(),
-                exit = slideOutVertically { it } + fadeOut(),
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 NoteEditorSheet(
@@ -171,7 +170,7 @@ private fun SearchBar(
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
-                label = { Text("\u641C\u7D22\u661F\u7FA4\u7B14\u8BB0", color = Color(0xAAFFFFFF)) },
+                label = { Text("搜索笔记…", color = Color(0xAAFFFFFF)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -281,8 +280,8 @@ private fun StarFieldCanvas(
                     else -> StarWhite
                 }
 
-                drawCircle(color = color.copy(alpha = 0.15f), radius = r * 3f, center = Offset(sx, sy))
-                drawCircle(color = color.copy(alpha = 0.3f), radius = r * 1.8f, center = Offset(sx, sy))
+                drawCircle(color = color.copy(alpha = 0.12f), radius = r * 3.5f, center = Offset(sx, sy))
+                drawCircle(color = color.copy(alpha = 0.28f), radius = r * 2f, center = Offset(sx, sy))
                 drawCircle(color = color, radius = r, center = Offset(sx, sy))
             }
         }
@@ -325,7 +324,7 @@ private fun NoteEditorSheet(
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (note == null) "\u65B0\u5EFA\u661F\u9645\u7B14\u8BB0" else "\u7F16\u8F91\u7B14\u8BB0",
+                    text = if (note == null) "新建笔记" else "编辑笔记",
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f)
@@ -339,9 +338,9 @@ private fun NoteEditorSheet(
                     }
                     IconButton(onClick = { onToggleStar(note) }) {
                         Icon(
-                            imageVector = if (note.starred) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                            imageVector = Icons.Filled.Star,
                             contentDescription = null,
-                            tint = if (note.starred) StarGold else Color(0x88FFFFFF)
+                            tint = if (note.starred) StarGold else Color(0x66FFFFFF)
                         )
                     }
                     IconButton(onClick = { onDelete(note) }) {
@@ -366,7 +365,7 @@ private fun NoteEditorSheet(
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("\u6807\u9898", color = Color(0xAAFFFFFF)) },
+                label = { Text("标题", color = Color(0xAAFFFFFF)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -383,7 +382,7 @@ private fun NoteEditorSheet(
             OutlinedTextField(
                 value = content,
                 onValueChange = { content = it },
-                label = { Text("\u5185\u5BB9", color = Color(0xAAFFFFFF)) },
+                label = { Text("内容", color = Color(0xAAFFFFFF)) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -403,7 +402,7 @@ private fun NoteEditorSheet(
                 horizontalArrangement = Arrangement.End
             ) {
                 TextButton(onClick = onDismiss) {
-                    Text("\u53D6\u6D88", color = Color(0xAAFFFFFF))
+                    Text("取消", color = Color(0xAAFFFFFF))
                 }
                 Spacer(Modifier.width(12.dp))
                 Button(
@@ -419,7 +418,7 @@ private fun NoteEditorSheet(
                     ),
                     modifier = Modifier.width(120.dp)
                 ) {
-                    Text("\u4FDD\u5B58")
+                    Text("保存")
                 }
             }
         }

@@ -24,12 +24,16 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun AppContent() {
         val db = remember {
-            Room.databaseBuilder(applicationContext, NoteDatabase::class.java, "stellar-notes.db")
-                .fallbackToDestructiveMigration()
-                .build()
+            Room.databaseBuilder(
+                applicationContext,
+                NoteDatabase::class.java,
+                "stellar-notes.db"
+            ).fallbackToDestructiveMigration().build()
         }
         val repo = remember { NoteRepository(db.noteDao()) }
-        val vm: StellarViewModel = viewModel(factory = StellarViewModelFactory(repo))
+        val vm: StellarViewModel = viewModel(
+            factory = StellarViewModelFactory(repo)
+        )
         StellarApp(viewModel = vm)
     }
 }

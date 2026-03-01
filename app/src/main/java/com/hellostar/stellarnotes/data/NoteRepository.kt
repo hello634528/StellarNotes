@@ -9,5 +9,7 @@ class NoteRepository(private val dao: NoteDao) {
         if (note.id == 0L) dao.insert(note) else dao.update(note)
     }
 
-    suspend fun delete(note: Note) = dao.delete(note)
+    suspend fun delete(note: Note) {
+        dao.delete(note)
+    }
 }

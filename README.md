@@ -1,0 +1,3 @@
+# StellarNotes
+
+Initializing repository...

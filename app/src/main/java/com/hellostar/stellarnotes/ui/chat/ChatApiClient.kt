@@ -4,6 +4,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -22,16 +25,61 @@ class ChatApiClient {
 
     suspend fun fetchModels(baseUrl: String, apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
-            val url = baseUrl.trimEnd('/') + "/v1/models"
-            val request = Request.Builder().url(url)
+            val urlInput = baseUrl.trim()
+            if (urlInput.isBlank()) return@withContext Result.failure(Exception("Base URL 为空"))
+            if (apiKey.isBlank()) return@withContext Result.failure(Exception("API Key 为空"))
+
+            val normalizedBase = if (urlInput.startsWith("http://") || urlInput.startsWith("https://")) {
+                urlInput
+            } else {
+                "https://$urlInput"
+            }
+            val url = normalizedBase.trimEnd('/') + "/v1/models"
+
+            val request = Request.Builder()
+                .url(url)
                 .addHeader("Authorization", "Bearer $apiKey")
-                .get().build()
+                .get()
+                .build()
+
             val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext Result.failure(Exception("HTTP ${response.code}"))
-            val body = response.body?.string() ?: return@withContext Result.failure(Exception("Empty"))
-            val models = json.decodeFromString<ModelsResponse>(body)
-            Result.success(models.data.map { it.id }.sorted())
-        } catch (e: Exception) { Result.failure(e) }
+            if (!response.isSuccessful) {
+                val err = response.body?.string()?.take(200) ?: ""
+                return@withContext Result.failure(Exception("HTTP ${response.code} $err"))
+            }
+
+            val body = response.body?.string().orEmpty()
+            if (body.isBlank()) return@withContext Result.failure(Exception("空响应"))
+
+            // 兼容多种返回格式，避免解析异常导致闪退
+            val models = mutableListOf<String>()
+            runCatching {
+                val root = json.parseToJsonElement(body).jsonObject
+                // OpenAI: { data:[{id:"..."}] }
+                root["data"]?.jsonArray?.forEach { item ->
+                    item.jsonObject["id"]?.jsonPrimitive?.contentOrNull?.let { if (it.isNotBlank()) models.add(it) }
+                }
+                // Some providers: { models:["a","b"] } or { models:[{id:"..."}] }
+                root["models"]?.jsonArray?.forEach { item ->
+                    val v = runCatching { item.jsonPrimitive.contentOrNull }.getOrNull()
+                    if (!v.isNullOrBlank()) models.add(v)
+                    runCatching { item.jsonObject["id"]?.jsonPrimitive?.contentOrNull }.getOrNull()?.let { if (!it.isNullOrBlank()) models.add(it) }
+                }
+            }
+
+            // fallback regex
+            if (models.isEmpty()) {
+                val regex = Regex("\\\"id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                regex.findAll(body).forEach { m ->
+                    m.groupValues.getOrNull(1)?.let { id -> if (id.isNotBlank()) models.add(id) }
+                }
+            }
+
+            val cleaned = models.distinct().sorted()
+            if (cleaned.isEmpty()) Result.failure(Exception("未解析到任何模型")) else Result.success(cleaned)
+        } catch (t: Throwable) {
+            Result.failure(Exception(t.message ?: "获取模型失败"))
+        }
     }
 
     suspend fun streamChat(

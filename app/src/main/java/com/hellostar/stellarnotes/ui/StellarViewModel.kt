@@ -22,7 +22,8 @@ data class StellarUiState(
 
 data class SearchResult(
     val note: Note,
-    val score: Double
+    val score: Double,
+    val normalizedScore: Float = 0f // For visual energy bar
 )
 
 class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
@@ -49,7 +50,7 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
         focusNoteId.value = id
     }
 
-    fun addOrUpdate(old: Note?, title: String, content: String, pinned: Boolean, starred: Boolean) {
+    fun addOrUpdate(old: Note?, title: String, content: String, starred: Boolean) {
         if (title.isBlank() && content.isBlank()) return
         viewModelScope.launch {
             val now = System.currentTimeMillis()
@@ -59,23 +60,17 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
                     Note(
                         title = finalTitle, content = content,
                         createdAt = now, updatedAt = now,
-                        pinned = pinned, starred = starred
+                        starred = starred
                     )
                 )
             } else {
                 repo.upsert(
                     old.copy(
                         title = finalTitle, content = content,
-                        updatedAt = now, pinned = pinned, starred = starred
+                        updatedAt = now, starred = starred
                     )
                 )
             }
-        }
-    }
-
-    fun togglePin(n: Note) {
-        viewModelScope.launch {
-            repo.upsert(n.copy(pinned = !n.pinned, updatedAt = System.currentTimeMillis()))
         }
     }
 
@@ -90,9 +85,10 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
     }
 
     private fun rankNotes(notes: List<Note>, q: String): List<SearchResult> {
-        if (q.isBlank()) return notes.map { SearchResult(it, 0.0) }
+        if (q.isBlank()) return emptyList() // Hide results if query is empty
         val tokens = q.lowercase().trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-        return notes.map { n ->
+        
+        val rawResults = notes.map { n ->
             val t = n.title.lowercase()
             val c = n.content.lowercase()
             var score = 0.0
@@ -103,11 +99,16 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
                 if (c.contains(k)) score += 18.0
                 score += fuzzyMatch(k, t) * 24.0 + fuzzyMatch(k, c) * 10.0
             }
-            if (n.pinned) score += 12.0
-            if (n.starred) score += 8.0
+            if (n.starred) score += 12.0
             score += max(0.0, 14.0 - (System.currentTimeMillis() - n.updatedAt).toDouble() / 86400000.0)
             SearchResult(n, score)
-        }.filter { it.score > 8.0 }.sortedByDescending { it.score }
+        }.filter { it.score > 5.0 }.sortedByDescending { it.score }
+
+        // Normalize scores for the UI energy bar (0.1 to 1.0)
+        val maxScore = rawResults.maxOfOrNull { it.score } ?: 1.0
+        return rawResults.map { 
+            it.copy(normalizedScore = (it.score / maxScore).toFloat().coerceIn(0.1f, 1f))
+        }
     }
 
     private fun fuzzyMatch(a: String, b: String): Double {

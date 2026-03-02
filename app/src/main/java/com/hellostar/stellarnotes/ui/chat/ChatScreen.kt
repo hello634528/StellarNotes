@@ -97,56 +97,80 @@ fun ChatScreen(
         }
     ) {
         Column(Modifier.fillMaxSize().background(Deep)) {
+            // Top bar
             Row(
                 Modifier.fillMaxWidth().background(Color(0xFF060D20))
                     .padding(top = 40.dp, bottom = 8.dp, start = 8.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) }
-                IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, null, tint = Color.White) }
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, null, tint = Color.White)
+                }
+                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                    Icon(Icons.Default.Menu, null, tint = Color.White)
+                }
                 Text(
-                    chatVm.currentConversation?.name ?: "AI \u5bf9\u8bdd",
+                    text = chatVm.currentConversation?.name ?: "AI \u5bf9\u8bdd",
                     color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
                 if (apiKey.isBlank()) {
                     Text(
-                        "\u672a\u914d\u7f6e", color = Color(0xFFFF6B6B), fontSize = 12.sp,
-                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x33FF6B6B))
-                            .padding(horizontal = 8.dp, vertical = 2.dp).clickable { onOpenSettings() }
+                        text = "\u672a\u914d\u7f6e",
+                        color = Color(0xFFFF6B6B), fontSize = 12.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x33FF6B6B))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                            .clickable { onOpenSettings() }
                     )
                 }
             }
 
+            // Messages
             val conv = chatVm.currentConversation
             val listState = rememberLazyListState()
             val count = (conv?.messages?.size ?: 0) + (if (chatVm.isStreaming.value) 1 else 0)
-            LaunchedEffect(count) { if (count > 0) listState.animateScrollToItem(count - 1) }
+            LaunchedEffect(count) {
+                if (count > 0) listState.animateScrollToItem(count - 1)
+            }
 
             LazyColumn(
-                Modifier.weight(1f).fillMaxWidth(), state = listState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                state = listState,
                 contentPadding = PaddingValues(12.dp, 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (conv != null) {
-                    conv.contextNote?.let { note ->
+                    val ctxNote = conv.contextNote
+                    if (ctxNote != null) {
                         item {
-                            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF0A1530)).padding(12.dp)) {
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF0A1530))
+                                    .padding(12.dp)
+                            ) {
                                 Column {
-                                    Text("\uD83D\uDCCB \u7b14\u8bb0\u4e0a\u4e0b\u6587", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(note.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                    if (note.content.isNotBlank()) Text(
-                                        note.content.take(100) + if (note.content.length > 100) "..." else "",
-                                        color = Color(0x88FFFFFF), fontSize = 12.sp
+                                    Text(
+                                        "\uD83D\uDCCB \u7b14\u8bb0\u4e0a\u4e0b\u6587",
+                                        color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold
                                     )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(ctxNote.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                    if (ctxNote.content.isNotBlank()) {
+                                        val preview = if (ctxNote.content.length > 100) ctxNote.content.take(100) + "..." else ctxNote.content
+                                        Text(preview, color = Color(0x88FFFFFF), fontSize = 12.sp)
+                                    }
                                 }
                             }
                         }
                     }
                     items(conv.messages) { msg -> Bubble(msg) }
                     if (chatVm.isStreaming.value) {
-                        item { StreamBubble(chatVm.streamThinking.value, chatVm.streamContent.value) }
+                        item {
+                            StreamBubble(chatVm.streamThinking.value, chatVm.streamContent.value)
+                        }
                     }
                 }
                 if (conv == null || (conv.messages.isEmpty() && !chatVm.isStreaming.value)) {
@@ -158,8 +182,11 @@ fun ChatScreen(
                                 Text("\u5f00\u59cb\u5bf9\u8bdd", color = Color(0x66FFFFFF), fontSize = 16.sp)
                                 if (apiKey.isBlank()) {
                                     Spacer(Modifier.height(8.dp))
-                                    Text("\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e API", color = Color(0xFFFF6B6B), fontSize = 13.sp,
-                                        modifier = Modifier.clickable { onOpenSettings() })
+                                    Text(
+                                        "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e API",
+                                        color = Color(0xFFFF6B6B), fontSize = 13.sp,
+                                        modifier = Modifier.clickable { onOpenSettings() }
+                                    )
                                 }
                             }
                         }
@@ -167,6 +194,7 @@ fun ChatScreen(
                 }
             }
 
+            // Input bar
             InputBar(
                 enabled = !chatVm.isStreaming.value && apiKey.isNotBlank(),
                 onSend = { chatVm.sendMessage(it, baseUrl, apiKey, model, enableThinking) }
@@ -178,28 +206,39 @@ fun ChatScreen(
 @Composable
 private fun Bubble(msg: UiMessage) {
     val isUser = msg.role == "user"
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+    ) {
         if (msg.thinking.isNotBlank() && !isUser) {
             var exp by remember { mutableStateOf(false) }
             Column(
-                Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF0A1225)).clickable { exp = !exp }.padding(10.dp)
+                Modifier.widthIn(max = 320.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0A1225))
+                    .clickable { exp = !exp }
+                    .padding(10.dp)
             ) {
-                Text(
-                    if (exp) "\uD83D\uDCA1 \u601d\u8003\u8fc7\u7a0b \u25B2" else "\uD83D\uDCA1 \u601d\u8003\u8fc7\u7a0b \u25BC",
-                    color = Color(0xFF7A9FCC), fontSize = 11.sp, fontWeight = FontWeight.Bold
-                )
+                val label = if (exp) "\uD83D\uDCA1 \u601d\u8003\u8fc7\u7a0b \u25B2" else "\uD83D\uDCA1 \u601d\u8003\u8fc7\u7a0b \u25BC"
+                Text(label, color = Color(0xFF7A9FCC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 AnimatedVisibility(exp, enter = expandVertically(), exit = shrinkVertically()) {
-                    Text(msg.thinking, color = Color(0x99FFFFFF), fontSize = 13.sp, fontStyle = FontStyle.Italic, lineHeight = 20.sp, modifier = Modifier.padding(top = 6.dp))
+                    Text(
+                        msg.thinking, color = Color(0x99FFFFFF), fontSize = 13.sp,
+                        fontStyle = FontStyle.Italic, lineHeight = 20.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
                 }
             }
             Spacer(Modifier.height(4.dp))
         }
         Box(
-            Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(16.dp))
+            Modifier.widthIn(max = 320.dp)
+                .clip(RoundedCornerShape(16.dp))
                 .background(if (isUser) UserBubble else AiBubble)
                 .padding(horizontal = 14.dp, vertical = 10.dp)
-        ) { Text(msg.content, color = Color.White, fontSize = 15.sp, lineHeight = 22.sp) }
+        ) {
+            Text(msg.content, color = Color.White, fontSize = 15.sp, lineHeight = 22.sp)
+        }
     }
 }
 
@@ -207,7 +246,12 @@ private fun Bubble(msg: UiMessage) {
 private fun StreamBubble(thinking: String, content: String) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         if (thinking.isNotBlank()) {
-            Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF0A1225)).padding(10.dp)) {
+            Box(
+                Modifier.widthIn(max = 320.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0A1225))
+                    .padding(10.dp)
+            ) {
                 Column {
                     Text("\uD83D\uDCA1 \u601d\u8003\u4e2d...", color = Color(0xFF7A9FCC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
@@ -217,11 +261,20 @@ private fun StreamBubble(thinking: String, content: String) {
             Spacer(Modifier.height(4.dp))
         }
         if (content.isNotBlank()) {
-            Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(16.dp)).background(AiBubble).padding(14.dp, 10.dp)) {
+            Box(
+                Modifier.widthIn(max = 320.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(AiBubble)
+                    .padding(14.dp, 10.dp)
+            ) {
                 Text(content, color = Color.White, fontSize = 15.sp, lineHeight = 22.sp)
             }
         } else {
-            Box(Modifier.clip(RoundedCornerShape(16.dp)).background(AiBubble).padding(14.dp, 10.dp)) {
+            Box(
+                Modifier.clip(RoundedCornerShape(16.dp))
+                    .background(AiBubble)
+                    .padding(14.dp, 10.dp)
+            ) {
                 Text("\u2588", color = Blue, fontSize = 15.sp)
             }
         }
@@ -232,55 +285,104 @@ private fun StreamBubble(thinking: String, content: String) {
 private fun InputBar(enabled: Boolean, onSend: (String) -> Unit) {
     var text by remember { mutableStateOf("") }
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFF060D20))
-            .padding(horizontal = 12.dp, vertical = 10.dp).padding(bottom = 16.dp),
+        Modifier.fillMaxWidth()
+            .background(Color(0xFF060D20))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .padding(bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(Color(0xFF0E1830)).padding(16.dp, 12.dp)) {
+        Box(
+            Modifier.weight(1f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF0E1830))
+                .padding(16.dp, 12.dp)
+        ) {
             BasicTextField(
-                text, { text = it }, textStyle = TextStyle(Color.White, 15.sp),
-                cursorBrush = SolidColor(Blue), modifier = Modifier.fillMaxWidth(),
-                decorationBox = { i -> if (text.isEmpty()) Text("\u8f93\u5165\u6d88\u606f...", color = Color(0x44FFFFFF), fontSize = 15.sp); i() }
+                value = text,
+                onValueChange = { text = it },
+                textStyle = TextStyle(Color.White, 15.sp),
+                cursorBrush = SolidColor(Blue),
+                modifier = Modifier.fillMaxWidth(),
+                decorationBox = { inner ->
+                    if (text.isEmpty()) Text("\u8f93\u5165\u6d88\u606f...", color = Color(0x44FFFFFF), fontSize = 15.sp)
+                    inner()
+                }
             )
         }
         Spacer(Modifier.width(8.dp))
         Box(
-            Modifier.size(44.dp).clip(CircleShape)
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
                 .background(if (enabled && text.isNotBlank()) Blue else Color(0xFF1A2540))
-                .clickable(enabled = enabled && text.isNotBlank()) { onSend(text); text = "" },
+                .clickable(enabled = enabled && text.isNotBlank()) {
+                    onSend(text)
+                    text = ""
+                },
             contentAlignment = Alignment.Center
-        ) { Icon(Icons.Default.Send, null, tint = Color.White, modifier = Modifier.size(20.dp)) }
+        ) {
+            Icon(Icons.Default.Send, null, tint = Color.White, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
 @Composable
 private fun DrawerContent(
-    conversations: List<Conversation>, currentId: Long?,
-    onSelect: (Long) -> Unit, onNew: () -> Unit, onDelete: (Long) -> Unit, onSettings: () -> Unit
+    conversations: List<Conversation>,
+    currentId: Long?,
+    onSelect: (Long) -> Unit,
+    onNew: () -> Unit,
+    onDelete: (Long) -> Unit,
+    onSettings: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(top = 48.dp, start = 12.dp, end = 12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text("\u5bf9\u8bdd\u5217\u8868", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Row {
-                IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, null, tint = Color(0x88FFFFFF)) }
-                IconButton(onClick = onNew) { Icon(Icons.Default.Add, null, tint = Blue) }
+                IconButton(onClick = onSettings) {
+                    Icon(Icons.Default.Settings, null, tint = Color(0x88FFFFFF))
+                }
+                IconButton(onClick = onNew) {
+                    Icon(Icons.Default.Add, null, tint = Blue)
+                }
             }
         }
         Spacer(Modifier.height(12.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.weight(1f)
+        ) {
             items(conversations, key = { it.id }) { c ->
                 val cur = c.id == currentId
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
                         .background(if (cur) Color(0xFF152040) else Color.Transparent)
-                        .clickable { onSelect(c.id) }.padding(12.dp, 10.dp),
+                        .clickable { onSelect(c.id) }
+                        .padding(12.dp, 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(c.name, color = if (cur) Blue else Color.White, fontSize = 14.sp, fontWeight = if (cur) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
-                        Text("${c.messages.size} \u6761\u6d88\u606f", color = Color(0x55FFFFFF), fontSize = 11.sp)
+                        Text(
+                            c.name,
+                            color = if (cur) Blue else Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = if (cur) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1
+                        )
+                        Text(
+                            "${c.messages.size} \u6761\u6d88\u606f",
+                            color = Color(0x55FFFFFF), fontSize = 11.sp
+                        )
                     }
-                    IconButton(onClick = { onDelete(c.id) }, modifier = Modifier.size(32.dp)) {
+                    IconButton(
+                        onClick = { onDelete(c.id) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
                         Icon(Icons.Default.Delete, null, tint = Color(0x44FFFFFF), modifier = Modifier.size(16.dp))
                     }
                 }

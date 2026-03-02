@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
         val repo = remember { NoteRepository(db.noteDao()) }
         val vm: StellarViewModel = viewModel(factory = StellarViewModelFactory(repo))
         val chatVm: ChatViewModel = viewModel()
+        chatVm.repo = repo
         StellarApp(viewModel = vm, appPrefs = appPrefs, chatVm = chatVm)
     }
 }

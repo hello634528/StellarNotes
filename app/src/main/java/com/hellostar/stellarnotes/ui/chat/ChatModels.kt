@@ -49,6 +49,11 @@ data class StreamToolCallDelta(val index: Int = 0, val id: String? = null, val t
 @Serializable
 data class StreamFnDelta(val name: String? = null, val arguments: String? = null)
 
+@Serializable
+data class ModelsResponse(val data: List<ModelItem> = emptyList())
+@Serializable
+data class ModelItem(val id: String, val owned_by: String = "")
+
 data class AccumulatedToolCall(val id: String, val name: String, val arguments: String)
 
 sealed class StreamResult {

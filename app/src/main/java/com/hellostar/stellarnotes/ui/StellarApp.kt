@@ -8,6 +8,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +33,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -55,6 +60,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -67,9 +74,10 @@ import kotlinx.coroutines.launch
 
 private val DeepBlue = Color(0xFF040A1E)
 private val StarGold = Color(0xFFFFD86B)
-private val PinBlue = Color(0xFF9FD4FF)
-private val PanelBg = Color(0x88112244)
-private val CardBg = Color(0xEE0D1C42)
+private val ActionBlue = Color(0xFF5A9DFF)
+private val GlassBg = Color(0x33ffffff)
+private val GlassBorder = Color(0x22ffffff)
+private val CardBg = Color(0xEE0A1530)
 
 @Composable
 fun StellarApp(viewModel: StellarViewModel) {
@@ -93,46 +101,46 @@ private fun IntroScreen(onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(40.dp)
             ) {
-                Text(text = "\u2728", fontSize = 72.sp)
+                Text(text = "\u2728", fontSize = 72.sp) // ✨
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "\u661f\u6f9c\u7b14\u8bb0",
+                    text = "星澜笔记",
                     color = Color.White,
-                    fontSize = 34.sp,
+                    fontSize = 36.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = "NebulaNotes",
-                    color = PinBlue,
+                    color = ActionBlue,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Light
+                    fontWeight = FontWeight.Light,
+                    letterSpacing = 2.sp
                 )
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(40.dp))
                 Text(
-                    text = "\u6bcf\u4e00\u6761\u7b14\u8bb0\uff0c\u90fd\u662f\u4f60\u7684\u4e00\u9897\u661f",
+                    text = "每一条笔记，都是宇宙中的一颗星",
                     color = Color(0xCCFFFFFF),
                     fontSize = 16.sp,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 val features = listOf(
-                    "\uD83D\uDC46  \u5355\u6307\u6ed1\u52a8\u6f2b\u6e38\u661f\u7a7a",
-                    "\uD83D\uDD0D  \u53cc\u6307\u634f\u5408\u7f29\u653e\u89c6\u89d2",
-                    "\u2b50  \u661f\u6807\u7b14\u8bb0\u53d8\u6210\u91d1\u8272\u661f\u4f53",
-                    "\uD83D\uDCCC  \u7f6e\u9876\u7b14\u8bb0\u79bb\u4f60\u6700\u8fd1",
-                    "\uD83D\uDCF1  \u8f7b\u6643\u624b\u673a\uff0c\u661f\u7a7a\u8ddf\u7740\u52a8"
+                    "👆  单指滑动漫游星空",
+                    "🔍  双指捏合缩放视角",
+                    "⭐  星标笔记汇聚星系中心",
+                    "📱  轻晃手机，星空随之漂移"
                 )
                 for (f in features) {
                     Text(
                         text = f,
                         color = Color(0xAAFFFFFF),
                         fontSize = 14.sp,
-                        modifier = Modifier.padding(vertical = 3.dp)
+                        modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
-                Spacer(Modifier.height(40.dp))
+                Spacer(Modifier.height(48.dp))
                 Text(
-                    text = "\u70b9\u51fb\u4efb\u610f\u4f4d\u7f6e\u8fdb\u5165\u661f\u7a7a",
+                    text = "点击任意位置进入星际",
                     color = Color(0x77FFFFFF),
                     fontSize = 13.sp
                 )
@@ -145,19 +153,17 @@ private fun IntroScreen(onDismiss: () -> Unit) {
 private fun MainScreen(viewModel: StellarViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     
-    // UI states
     var activeNote by remember { mutableStateOf<Note?>(null) }
-    var isEditing by remember { mutableStateOf(false) } // true: Editor, false: Reader
+    var isEditing by remember { mutableStateOf(false) }
     var showSheet by remember { mutableStateOf(false) }
+    var isFullScreen by remember { mutableStateOf(false) }
     
-    // Camera states
     val tilt = rememberTiltState()
     val cameraX = remember { Animatable(0f) }
     val cameraY = remember { Animatable(0f) }
     var cameraZoom by remember { mutableFloatStateOf(1f) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Focus camera on specific note
     LaunchedEffect(state.focusedNoteId) {
         val noteId = state.focusedNoteId ?: return@LaunchedEffect
         val note = state.notes.firstOrNull { it.id == noteId } ?: return@LaunchedEffect
@@ -168,11 +174,11 @@ private fun MainScreen(viewModel: StellarViewModel) {
         coroutineScope.launch {
             cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow))
         }
-        cameraZoom = 1.8f // Zoom in when focused
+        cameraZoom = 1.8f
         
-        // Open reader mode
         activeNote = note
         isEditing = false
+        isFullScreen = false
         showSheet = true
     }
 
@@ -197,20 +203,18 @@ private fun MainScreen(viewModel: StellarViewModel) {
                     cameraZoom = 1f
                 },
                 onTapNote = { note ->
-                    // Focus camera
                     val pos = computeStarPosition(note, state.notes)
                     coroutineScope.launch { cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }
                     coroutineScope.launch { cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }
-                    cameraZoom = 1.5f
+                    cameraZoom = 1.6f
                     
-                    // Open reader
                     activeNote = note
                     isEditing = false
+                    isFullScreen = false
                     showSheet = true
                 }
             )
 
-            // Search Bar (hide when sheet is open)
             AnimatedVisibility(
                 visible = !showSheet,
                 enter = fadeIn(),
@@ -219,9 +223,9 @@ private fun MainScreen(viewModel: StellarViewModel) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp, top = 40.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 48.dp)
                 ) {
-                    SearchBar(
+                    SearchBarGlass(
                         query = state.query,
                         results = state.searchResults,
                         onQueryChange = { viewModel.onQueryChange(it) },
@@ -230,7 +234,6 @@ private fun MainScreen(viewModel: StellarViewModel) {
                 }
             }
 
-            // FAB (hide when sheet is open)
             AnimatedVisibility(
                 visible = !showSheet,
                 enter = fadeIn(),
@@ -241,45 +244,59 @@ private fun MainScreen(viewModel: StellarViewModel) {
                     onClick = {
                         activeNote = null
                         isEditing = true
+                        isFullScreen = false
                         showSheet = true
                     },
-                    containerColor = Color(0xFF1A3A7A),
+                    containerColor = ActionBlue,
                     contentColor = Color.White
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "New")
                 }
             }
 
-            // Bottom Sheet (Reader or Editor)
             AnimatedVisibility(
                 visible = showSheet,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                if (isEditing) {
-                    NoteEditorSheet(
-                        note = activeNote,
-                        onDismiss = { showSheet = false },
-                        onSave = { old, title, content, pinned, starred ->
-                            viewModel.addOrUpdate(old, title, content, pinned, starred)
-                            showSheet = false
-                        },
-                        onToggleStar = { viewModel.toggleStar(it) },
-                        onTogglePin = { viewModel.togglePin(it) },
-                        onDelete = {
-                            viewModel.deleteNote(it)
-                            showSheet = false
-                        }
-                    )
-                } else {
-                    NoteReaderSheet(
-                        note = activeNote!!,
-                        onDismiss = { showSheet = false },
-                        onEdit = { isEditing = true },
-                        onToggleStar = { viewModel.toggleStar(it); activeNote = it.copy(starred = !it.starred) },
-                        onTogglePin = { viewModel.togglePin(it); activeNote = it.copy(pinned = !it.pinned) }
-                    )
+                val heightModifier = if (isFullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(420.dp)
+                val shape = if (isFullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+
+                Card(
+                    modifier = heightModifier.animateContentSize(),
+                    shape = shape,
+                    colors = CardDefaults.cardColors(containerColor = CardBg)
+                ) {
+                    if (isEditing) {
+                        NoteEditorContent(
+                            note = activeNote,
+                            isFullScreen = isFullScreen,
+                            onToggleFullScreen = { isFullScreen = !isFullScreen },
+                            onDismiss = { showSheet = false },
+                            onSave = { old, title, content, starred ->
+                                viewModel.addOrUpdate(old, title, content, starred)
+                                showSheet = false
+                            },
+                            onToggleStar = { viewModel.toggleStar(it) },
+                            onDelete = {
+                                viewModel.deleteNote(it)
+                                showSheet = false
+                            }
+                        )
+                    } else {
+                        NoteReaderContent(
+                            note = activeNote!!,
+                            isFullScreen = isFullScreen,
+                            onToggleFullScreen = { isFullScreen = !isFullScreen },
+                            onDismiss = { showSheet = false },
+                            onEdit = { isEditing = true },
+                            onToggleStar = { 
+                                viewModel.toggleStar(it)
+                                activeNote = it.copy(starred = !it.starred) 
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -287,65 +304,84 @@ private fun MainScreen(viewModel: StellarViewModel) {
 }
 
 @Composable
-private fun SearchBar(
+private fun SearchBarGlass(
     query: String,
     results: List<SearchResult>,
     onQueryChange: (String) -> Unit,
     onSelect: (Note) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = PanelBg)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(GlassBg)
+            .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
+            .padding(12.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                label = { Text("\u641c\u7d22\u661f\u7fa4\u7b14\u8bb0\u2026", color = Color(0xAAFFFFFF)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PinBlue,
-                    unfocusedBorderColor = Color(0x55FFFFFF),
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    cursorColor = PinBlue
-                )
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            label = { Text("搜索星群笔记…", color = Color(0xAAFFFFFF)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ActionBlue,
+                unfocusedBorderColor = Color.Transparent,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = ActionBlue
             )
-            if (query.isNotBlank() && results.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                LazyColumn(modifier = Modifier.height(160.dp)) {
-                    items(results.take(8), key = { it.note.id }) { r ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(r.note) }
-                                .padding(vertical = 7.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (r.note.starred) {
-                                Icon(
-                                    Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint = StarGold,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                            }
+        )
+        
+        if (query.isNotBlank() && results.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            LazyColumn(modifier = Modifier.height(200.dp)) {
+                items(results.take(6), key = { it.note.id }) { r ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onSelect(r.note) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (r.note.starred) {
+                            Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = r.note.title,
                                 color = if (r.note.starred) StarGold else Color.White,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                                fontSize = 14.sp
+                                fontSize = 15.sp
                             )
-                            Text(
-                                text = "%.0f".format(r.score),
-                                color = Color(0xFF8AC6FF),
-                                fontSize = 12.sp
+                            if (r.note.content.isNotBlank()) {
+                                Text(
+                                    text = r.note.content.replace('\n', ' '),
+                                    color = Color(0x88FFFFFF),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        // Relevance Energy Bar
+                        Box(
+                            modifier = Modifier
+                                .width(40.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color(0x33FFFFFF))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(r.normalizedScore)
+                                    .height(4.dp)
+                                    .background(Brush.horizontalGradient(listOf(Color(0xFF3B82F6), Color(0xFF06B6D4))))
                             )
                         }
                     }
@@ -356,206 +392,175 @@ private fun SearchBar(
 }
 
 @Composable
-private fun NoteReaderSheet(
+private fun NoteReaderContent(
     note: Note,
+    isFullScreen: Boolean,
+    onToggleFullScreen: () -> Unit,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
-    onToggleStar: (Note) -> Unit,
-    onTogglePin: (Note) -> Unit
+    onToggleStar: (Note) -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(400.dp),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBg)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Header
-            Row(verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = note.title,
-                        color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "创建于: " + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date(note.createdAt)),
-                        color = Color(0x77FFFFFF),
-                        fontSize = 12.sp
-                    )
-                }
-                
-                IconButton(onClick = { onTogglePin(note) }) {
-                    Text(
-                        text = if (note.pinned) "\uD83D\uDCCC" else "\uD83D\uDCCD",
-                        fontSize = 18.sp
-                    )
-                }
-                IconButton(onClick = { onToggleStar(note) }) {
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = null,
-                        tint = if (note.starred) StarGold else Color(0x66FFFFFF)
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, null, tint = Color.White)
-                }
+    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+        // Header
+        Row(verticalAlignment = Alignment.Top) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = note.title,
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date(note.createdAt)),
+                    color = Color(0x66FFFFFF),
+                    fontSize = 12.sp
+                )
             }
+            
+            IconButton(onClick = { onToggleStar(note) }) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = "Star",
+                    tint = if (note.starred) StarGold else Color(0x44FFFFFF)
+                )
+            }
+            IconButton(onClick = onToggleFullScreen) {
+                Icon(
+                    imageVector = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                    contentDescription = "Fullscreen",
+                    tint = Color.White
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, "Close", tint = Color.White)
+            }
+        }
 
-            Spacer(Modifier.height(16.dp))
-            
-            // Content
-            val scrollState = rememberScrollState()
-            Text(
-                text = note.content.ifBlank { "（空）" },
-                color = Color(0xEEFFFFFF),
-                fontSize = 16.sp,
-                lineHeight = 24.sp,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(scrollState)
-            )
-            
-            Spacer(Modifier.height(16.dp))
-            
-            // Edit FAB
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                FloatingActionButton(
-                    onClick = onEdit,
-                    containerColor = PinBlue,
-                    contentColor = DeepBlue
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit")
-                }
+        Spacer(Modifier.height(20.dp))
+        
+        // Content
+        val scrollState = rememberScrollState()
+        Text(
+            text = note.content.ifBlank { "开始写下你的星际灵感..." },
+            color = Color(0xDDFFFFFF),
+            fontSize = 16.sp,
+            lineHeight = 26.sp,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scrollState)
+        )
+        
+        Spacer(Modifier.height(16.dp))
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            FloatingActionButton(
+                onClick = onEdit,
+                containerColor = ActionBlue,
+                contentColor = Color.White
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit")
             }
         }
     }
 }
 
-
 @Composable
-private fun NoteEditorSheet(
+private fun NoteEditorContent(
     note: Note?,
+    isFullScreen: Boolean,
+    onToggleFullScreen: () -> Unit,
     onDismiss: () -> Unit,
-    onSave: (Note?, String, String, Boolean, Boolean) -> Unit,
+    onSave: (Note?, String, String, Boolean) -> Unit,
     onToggleStar: (Note) -> Unit,
-    onTogglePin: (Note) -> Unit,
     onDelete: (Note) -> Unit
 ) {
     var title by remember(note?.id) { mutableStateOf(note?.title.orEmpty()) }
     var content by remember(note?.id) { mutableStateOf(note?.content.orEmpty()) }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(400.dp),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBg)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (note == null) "\u65b0\u5efa\u661f\u9645\u7b14\u8bb0" else "\u7f16\u8f91\u7b14\u8bb0",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f)
-                )
-                if (note != null) {
-                    IconButton(onClick = { onTogglePin(note) }) {
-                        Text(
-                            text = if (note.pinned) "\uD83D\uDCCC" else "\uD83D\uDCCD",
-                            fontSize = 18.sp
-                        )
-                    }
-                    IconButton(onClick = { onToggleStar(note) }) {
-                        Icon(
-                            imageVector = Icons.Filled.Star,
-                            contentDescription = null,
-                            tint = if (note.starred) StarGold else Color(0x66FFFFFF)
-                        )
-                    }
-                    IconButton(onClick = { onDelete(note) }) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = null,
-                            tint = Color(0xFFFF8A8A)
-                        )
-                    }
-                }
-                IconButton(onClick = onDismiss) {
+    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = if (note == null) "创造新星" else "重塑星体",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            if (note != null) {
+                IconButton(onClick = { onToggleStar(note) }) {
                     Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = null,
-                        tint = Color.White
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = "Star",
+                        tint = if (note.starred) StarGold else Color(0x44FFFFFF)
                     )
                 }
+                IconButton(onClick = { onDelete(note) }) {
+                    Icon(Icons.Default.Delete, "Delete", tint = Color(0xFFFF6B6B))
+                }
             }
-
-            Spacer(Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("\u6807\u9898", color = Color(0xAAFFFFFF)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PinBlue,
-                    unfocusedBorderColor = Color(0x55FFFFFF),
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    cursorColor = PinBlue
+            IconButton(onClick = onToggleFullScreen) {
+                Icon(
+                    imageVector = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                    contentDescription = "Fullscreen",
+                    tint = Color.White
                 )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, "Close", tint = Color.White)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = title,
+            onValueChange = { title = it },
+            placeholder = { Text("输入标题...", color = Color(0x55FFFFFF)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ActionBlue,
+                unfocusedBorderColor = Color(0x33FFFFFF),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = ActionBlue
             )
+        )
 
-            Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(12.dp))
 
-            OutlinedTextField(
-                value = content,
-                onValueChange = { content = it },
-                label = { Text("\u5185\u5bb9", color = Color(0xAAFFFFFF)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PinBlue,
-                    unfocusedBorderColor = Color(0x55FFFFFF),
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    cursorColor = PinBlue
-                )
+        OutlinedTextField(
+            value = content,
+            onValueChange = { content = it },
+            placeholder = { Text("记录下此刻的灵感...", color = Color(0x55FFFFFF)) },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ActionBlue,
+                unfocusedBorderColor = Color(0x33FFFFFF),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = ActionBlue
             )
+        )
 
-            Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDismiss) {
+                Text("丢弃", color = Color(0x88FFFFFF))
+            }
+            Spacer(Modifier.width(16.dp))
+            Button(
+                onClick = {
+                    onSave(note, title, content, note?.starred ?: false)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = ActionBlue),
+                modifier = Modifier.width(120.dp).height(48.dp),
+                shape = RoundedCornerShape(24.dp)
             ) {
-                TextButton(onClick = onDismiss) {
-                    Text("\u53d6\u6d88", color = Color(0xAAFFFFFF))
-                }
-                Spacer(Modifier.width(12.dp))
-                Button(
-                    onClick = {
-                        onSave(
-                            note, title, content,
-                            note?.pinned ?: false,
-                            note?.starred ?: false
-                        )
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1A3A7A)
-                    ),
-                    modifier = Modifier.width(120.dp)
-                ) {
-                    Text("\u4fdd\u5b58")
-                }
+                Text("注入宇宙", fontWeight = FontWeight.Bold)
             }
         }
     }

@@ -18,10 +18,12 @@ class ChatApiClient {
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
+
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
 
-    private class Acc(var id: String = "", var val StringBuilder = String
-Limited): {
+    private class Acc(var id: String = "", var name: String = "", val args: StringBuilder = StringBuilder())
+
+    private fun readBodyLimited(body: ResponseBody, maxBytes: Int): String? {
         body.byteStream().use { input ->
             val out = ByteArrayOutputStream()
             val buf = ByteArray(8192)
@@ -43,7 +45,11 @@ Limited): {
             if (urlInput.isBlank()) return@withContext Result.failure(Exception("Base URL 为空"))
             if (apiKey.isBlank()) return@withContext Result.failure(Exception("API Key 为空"))
 
-            val normalizedBase = if (urlInput.startsWith("http://") || urlInput.startsWith("https://")) urlInput else "https://$urlInput"
+            val normalizedBase = if (urlInput.startsWith("http://") || urlInput.startsWith("https://")) {
+                urlInput
+            } else {
+                "https://$urlInput"
+            }
             val url = normalizedBase.trimEnd('/') + "/v1/models"
 
             val request = try {
@@ -65,10 +71,13 @@ Limited): {
                 val rb = response.body ?: return@withContext Result.failure(Exception("空响应"))
                 val len = rb.contentLength()
                 if (len > 2_000_000) return@withContext Result.failure(Exception("响应过大，无法解析模型列表"))
-                val body = readBodyLimited(rb, 2_000_000) ?: return@withContext Result.failure(Exception("响应过大，无法解析模型列表"))
+
+                val body = readBodyLimited(rb, 2_000_000)
+                    ?: return@withContext Result.failure(Exception("响应过大，无法解析模型列表"))
+
                 if (body.isBlank()) return@withContext Result.failure(Exception("空响应"))
 
-                // 只提取 id，限制数量和长度，避免设置页渲染过重
+                // 稳健策略：仅提取 "id" 字段，避免 provider 返回结构不一致导致崩溃
                 val models = linkedSetOf<String>()
                 val idRegex = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"")
                 idRegex.findAll(body).forEach { m ->
@@ -77,6 +86,7 @@ Limited): {
                         ?.let(models::add)
                 }
 
+                // 保护 UI：限制最大数量
                 val cleaned = models.toList().sorted().take(40)
                 return@withContext if (cleaned.isEmpty()) {
                     Result.failure(Exception("未解析到任何模型"))
@@ -90,21 +100,34 @@ Limited): {
     }
 
     suspend fun streamChat(
-        baseUrl: String, apiKey: String, model: String,
-        messages: List<ChatMessage>, tools: List<Tool>? = null,
-        onThinking: (String) -> Unit, onContent: (String) -> Unit
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        messages: List<ChatMessage>,
+        tools: List<Tool>? = null,
+        onThinking: (String) -> Unit,
+        onContent: (String) -> Unit
     ): StreamResult = withContext(Dispatchers.IO) {
         try {
             val url = baseUrl.trimEnd('/') + "/v1/chat/completions"
             val req = ChatRequest(model = model, messages = messages, tools = if (tools.isNullOrEmpty()) null else tools)
             val body = json.encodeToString(req)
-            val request = Request.Builder().url(url)
+
+            val request = Request.Builder()
+                .url(url)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
-                .post(body.toRequestBody("application/json".toMediaType())).build()
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+
             val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext StreamResult.Error("HTTP ${response.code}: ${response.body?.string()?.take(300) ?: "Unknown"}")
-            val reader = response.body?.charStream()?.buffered() ?: return@withContext StreamResult.Error("Empty response")
+            if (!response.isSuccessful) {
+                return@withContext StreamResult.Error("HTTP ${response.code}: ${response.body?.string()?.take(300) ?: "Unknown"}")
+            }
+
+            val reader = response.body?.charStream()?.buffered()
+                ?: return@withContext StreamResult.Error("Empty response")
+
             val tcMap = mutableMapOf<Int, Acc>()
             reader.useLines { lines ->
                 for (line in lines) {
@@ -123,12 +146,16 @@ Limited): {
                                 tc.function?.arguments?.let { a.args.append(it) }
                             }
                             if (choice.finishReason == "tool_calls") {
-                                return@withContext StreamResult.ToolCalls(tcMap.values.map { AccumulatedToolCall(it.id, it.name, it.args.toString()) })
+                                return@withContext StreamResult.ToolCalls(
+                                    tcMap.values.map { AccumulatedToolCall(it.id, it.name, it.args.toString()) }
+                                )
                             }
                         }
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                    }
                 }
             }
+
             StreamResult.Done
         } catch (e: Exception) {
             StreamResult.Error(e.message ?: "Unknown error")

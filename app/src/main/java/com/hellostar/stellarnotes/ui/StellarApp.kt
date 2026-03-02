@@ -113,6 +113,7 @@ fun StellarApp(viewModel: StellarViewModel, appPrefs: AppPreferences, chatVm: Ch
         Screen.Settings -> SettingsScreen(appPrefs) { screen = Screen.Main }
     }
 }
+
 @Composable
 private fun IntroScreen(onDismiss: () -> Unit) {
     Surface(Modifier.fillMaxSize(), color = Deep) {
@@ -129,6 +130,7 @@ private fun IntroScreen(onDismiss: () -> Unit) {
         }
     }
 }
+
 @Composable
 private fun SettingsScreen(appPrefs: AppPreferences, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -152,6 +154,7 @@ private fun SettingsScreen(appPrefs: AppPreferences, onBack: () -> Unit) {
         }
     }
 }
+
 @Composable
 private fun MainScreen(vm: StellarViewModel, onOpenChat: (Note?) -> Unit, onOpenSettings: () -> Unit) {
     val state by vm.uiState.collectAsStateWithLifecycle(); var tab by remember { mutableStateOf(AppTab.Galaxy) }; var activeNote by remember { mutableStateOf<Note?>(null) }; var editing by remember { mutableStateOf(false) }; var sheet by remember { mutableStateOf(false) }; var full by remember { mutableStateOf(false) }
@@ -183,6 +186,7 @@ private fun MainScreen(vm: StellarViewModel, onOpenChat: (Note?) -> Unit, onOpen
         }
     }
 }
+
 @Composable
 private fun SearchBox(q: String, res: List<SearchResult>, onChange: (String) -> Unit, onSelect: (Note) -> Unit) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x55050C18)).border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(18.dp)).padding(14.dp)) {
@@ -196,15 +200,27 @@ private fun SearchBox(q: String, res: List<SearchResult>, onChange: (String) -> 
             } } } }
     }
 }
-@Composable private fun Dock(tab: AppTab, onTab: (AppTab) -> Unit) {
+
+@Composable
+private fun Dock(tab: AppTab, onTab: (AppTab) -> Unit) {
     Row(Modifier.clip(RoundedCornerShape(22.dp)).background(Color(0xDD050C18)).border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(22.dp)).padding(14.dp, 6.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
         DI(Icons.Default.Explore, "\u661f\u7a7a", tab == AppTab.Galaxy) { onTab(AppTab.Galaxy) }; DI(Icons.Default.FormatListBulleted, "\u5217\u8868", tab == AppTab.List) { onTab(AppTab.List) }; DI(Icons.Default.Info, "\u6863\u6848", tab == AppTab.Stats) { onTab(AppTab.Stats) }
     }
 }
-@Composable private fun DI(icon: ImageVector, label: String, sel: Boolean, onClick: () -> Unit) {
-    Column(Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick).padding(4.dp)) { Icon(icon, label, tint = if (sel) Blue else Color(0x66FFFFFF), modifier = Modifier.size(22.dp)); Text(label, color = if (sel) Blue else Color(0x66FFFFFF), fontSize = 10.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal) }
+
+@Composable
+private fun DI(icon: ImageVector, label: String, sel: Boolean, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick).padding(4.dp)
+    ) {
+        Icon(icon, label, tint = if (sel) Blue else Color(0x66FFFFFF), modifier = Modifier.size(22.dp))
+        Text(label, color = if (sel) Blue else Color(0x66FFFFFF), fontSize = 10.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
+    }
 }
-@Composable private fun NoteListPage(notes: List<Note>, onClick: (Note) -> Unit) {
+
+@Composable
+private fun NoteListPage(notes: List<Note>, onClick: (Note) -> Unit) {
     val fmt = remember { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()) }
     Column(Modifier.fillMaxSize().padding(top = 48.dp, start = 16.dp, end = 16.dp)) {
         Text("\u6240\u6709\u7b14\u8bb0", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold); Text("${notes.size} \u9897\u661f\u8fb0", color = Color(0x66FFFFFF), fontSize = 13.sp); Spacer(Modifier.height(14.dp))
@@ -218,7 +234,9 @@ private fun SearchBox(q: String, res: List<SearchResult>, onChange: (String) -> 
             } } } }
     }
 }
-@Composable private fun StatsPage(notes: List<Note>) {
+
+@Composable
+private fun StatsPage(notes: List<Note>) {
     val total = notes.sumOf { it.content.length }; val starred = notes.count { it.starred }; val avg = if (notes.isEmpty()) 0 else total / notes.size
     Column(Modifier.fillMaxSize().padding(top = 48.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("\u661f\u9645\u6863\u6848", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(36.dp))
@@ -227,8 +245,14 @@ private fun SearchBox(q: String, res: List<SearchResult>, onChange: (String) -> 
         Spacer(Modifier.height(36.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { SI("\u2b50","$starred","\u661f\u6807"); SI("\u270d\ufe0f","$total","\u603b\u5b57\u6570"); SI("\ud83d\udcc4","$avg","\u5e73\u5747") }
     }
 }
-@Composable private fun SI(emoji: String, v: String, label: String) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(emoji, fontSize = 28.sp); Spacer(Modifier.height(6.dp)); Text(v, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text(label, color = Color(0x88FFFFFF), fontSize = 12.sp) } }
-@Composable private fun ReaderSheet(note: Note, full: Boolean, toggleFull: () -> Unit, dismiss: () -> Unit, edit: () -> Unit, toggleStar: (Note) -> Unit, onAskAi: (Note) -> Unit) {
+
+@Composable
+private fun SI(emoji: String, v: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(emoji, fontSize = 28.sp); Spacer(Modifier.height(6.dp)); Text(v, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text(label, color = Color(0x88FFFFFF), fontSize = 12.sp) }
+}
+
+@Composable
+private fun ReaderSheet(note: Note, full: Boolean, toggleFull: () -> Unit, dismiss: () -> Unit, edit: () -> Unit, toggleStar: (Note) -> Unit, onAskAi: (Note) -> Unit) {
     val fmt = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Row(verticalAlignment = Alignment.Top) { Column(Modifier.weight(1f)) { Text(note.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(4.dp)); Row { Text(fmt.format(Date(note.createdAt)), color = Color(0x55FFFFFF), fontSize = 11.sp); Spacer(Modifier.width(12.dp)); Text("${note.content.length} \u5b57", color = Color(0x55FFFFFF), fontSize = 11.sp) } }
@@ -239,7 +263,9 @@ private fun SearchBox(q: String, res: List<SearchResult>, onChange: (String) -> 
             FloatingActionButton(onClick = edit, containerColor = Blue, contentColor = Color.White) { Icon(Icons.Default.Edit, null) } }
     }
 }
-@Composable private fun EditorSheet(note: Note?, full: Boolean, toggleFull: () -> Unit, dismiss: () -> Unit, save: (Note?, String, String, Boolean) -> Unit, toggleStar: (Note) -> Unit, delete: (Note) -> Unit) {
+
+@Composable
+private fun EditorSheet(note: Note?, full: Boolean, toggleFull: () -> Unit, dismiss: () -> Unit, save: (Note?, String, String, Boolean) -> Unit, toggleStar: (Note) -> Unit, delete: (Note) -> Unit) {
     var title by remember(note?.id) { mutableStateOf(note?.title.orEmpty()) }; var content by remember(note?.id) { mutableStateOf(note?.content.orEmpty()) }
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) { Text(if (note == null) "\u521b\u9020\u65b0\u661f" else "\u7f16\u8f91", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))

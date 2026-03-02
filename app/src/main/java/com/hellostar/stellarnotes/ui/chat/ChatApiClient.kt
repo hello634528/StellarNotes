@@ -4,10 +4,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -24,14 +20,6 @@ class ChatApiClient {
 
     private class Acc(var id: String = "", var name: String = "", val args: StringBuilder = StringBuilder())
 
-    private fun idFromObject(item: JsonElement): String? = runCatching {
-        item.jsonObject["id"]?.jsonPrimitive?.content
-    }.getOrNull()?.takeIf { it.isNotBlank() }
-
-    private fun stringFromPrimitive(item: JsonElement): String? = runCatching {
-        item.jsonPrimitive.content
-    }.getOrNull()?.takeIf { it.isNotBlank() }
-
     suspend fun fetchModels(baseUrl: String, apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
             val urlInput = baseUrl.trim()
@@ -41,14 +29,17 @@ class ChatApiClient {
             val normalizedBase = if (urlInput.startsWith("http://") || urlInput.startsWith("https://")) urlInput else "https://$urlInput"
             val url = normalizedBase.trimEnd('/') + "/v1/models"
 
-            val reqBuilder = runCatching {
-                Request.Builder().url(url)
+            val request = try {
+                Request.Builder()
+                    .url(url)
                     .addHeader("Authorization", "Bearer $apiKey")
                     .get()
                     .build()
-            }.getOrElse { return@withContext Result.failure(Exception("URL 无效: $url")) }
+            } catch (e: Exception) {
+                return@withContext Result.failure(Exception("URL 无效: $url"))
+            }
 
-            val response = client.newCall(reqBuilder).execute()
+            val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
                 val err = response.body?.string()?.take(260) ?: ""
                 return@withContext Result.failure(Exception("HTTP ${response.code} $err"))
@@ -57,24 +48,22 @@ class ChatApiClient {
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) return@withContext Result.failure(Exception("空响应"))
 
-            val models = mutableListOf<String>()
-            runCatching {
-                val root = json.parseToJsonElement(body).jsonObject
-                root["data"]?.jsonArray?.forEach { item -> idFromObject(item)?.let(models::add) }
-                root["models"]?.jsonArray?.forEach { item ->
-                    stringFromPrimitive(item)?.let(models::add)
-                    idFromObject(item)?.let(models::add)
-                }
+            // 极简稳健解析：直接提取 "id":"..."，避免 provider 各种 JSON 结构差异导致崩溃
+            val models = linkedSetOf<String>()
+            val idRegex = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"")
+            idRegex.findAll(body).forEach { m ->
+                m.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(models::add)
             }
 
+            // 某些接口可能返回纯字符串数组，尝试再提取可能的模型名（保守）
+            val strRegex = Regex("\"([a-zA-Z0-9._:/\\-]{2,})\"")
             if (models.isEmpty()) {
-                val regex = Regex("\\\"id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
-                regex.findAll(body).forEach { m ->
-                    m.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(models::add)
-                }
+                strRegex.findAll(body).map { it.groupValues[1] }
+                    .filter { it.contains("-") || it.contains("/") || it.contains("gpt", true) || it.contains("qwen", true) || it.contains("deepseek", true) }
+                    .forEach(models::add)
             }
 
-            val cleaned = models.distinct().sorted()
+            val cleaned = models.toList().sorted()
             if (cleaned.isEmpty()) Result.failure(Exception("未解析到任何模型")) else Result.success(cleaned)
         } catch (t: Throwable) {
             Result.failure(Exception(t.message ?: "获取模型失败"))

@@ -55,7 +55,8 @@ class ChatApiClient {
                 m.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(models::add)
             }
 
-            val cleaned = models.toList().sorted().take(500)
+            // UI 保护：最多返回 120 个，避免超大列表导致设置页一次性渲染过重
+            val cleaned = models.toList().sorted().take(120)
             if (cleaned.isEmpty()) Result.failure(Exception("未解析到任何模型")) else Result.success(cleaned)
         } catch (t: Throwable) {
             Result.failure(Exception(t.message ?: "获取模型失败"))

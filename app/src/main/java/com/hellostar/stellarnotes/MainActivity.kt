@@ -14,14 +14,13 @@ import com.hellostar.stellarnotes.ui.AppPreferences
 import com.hellostar.stellarnotes.ui.StellarApp
 import com.hellostar.stellarnotes.ui.StellarViewModel
 import com.hellostar.stellarnotes.ui.StellarViewModelFactory
+import com.hellostar.stellarnotes.ui.chat.ChatViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
         val appPrefs = AppPreferences(applicationContext)
-        
         setContent { AppContent(appPrefs) }
     }
 
@@ -35,9 +34,8 @@ class MainActivity : ComponentActivity() {
             ).fallbackToDestructiveMigration().build()
         }
         val repo = remember { NoteRepository(db.noteDao()) }
-        val vm: StellarViewModel = viewModel(
-            factory = StellarViewModelFactory(repo)
-        )
-        StellarApp(viewModel = vm, appPrefs = appPrefs)
+        val vm: StellarViewModel = viewModel(factory = StellarViewModelFactory(repo))
+        val chatVm: ChatViewModel = viewModel()
+        StellarApp(viewModel = vm, appPrefs = appPrefs, chatVm = chatVm)
     }
 }

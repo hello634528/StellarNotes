@@ -23,11 +23,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -74,22 +74,25 @@ private val Gold = Color(0xFFFFD86B)
 
 @Composable
 fun StellarApp(viewModel: StellarViewModel, appPrefs: AppPreferences, chatVm: ChatViewModel) {
-    val hasSeen by appPrefs.hasSeenIntro.collectAsState(initial = true)
-    val scope = rememberCoroutineScope()
+    val seenIntro by appPrefs.hasSeenIntro.collectAsState(initial = true)
     var screen by remember { mutableStateOf(Screen.Main) }
+    val scope = rememberCoroutineScope()
 
     val apiBaseUrl by appPrefs.apiBaseUrl.collectAsState(initial = "")
     val apiKey by appPrefs.apiKey.collectAsState(initial = "")
     val modelName by appPrefs.modelName.collectAsState(initial = "")
     val enableThinking by appPrefs.enableThinking.collectAsState(initial = true)
 
-    if (!hasSeen) {
-        Surface(Modifier.fillMaxSize(), color = Deep) {
-            Box(Modifier.fillMaxSize().clickable { scope.launch { appPrefs.setIntroSeen() } }, contentAlignment = Alignment.Center) {
+    if (!seenIntro) {
+        Surface(color = Deep, modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier.fillMaxSize().clickable { scope.launch { appPrefs.setIntroSeen() } },
+                contentAlignment = Alignment.Center
+            ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("NebulaNotes", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(10.dp))
-                    Text("Tap to enter", color = Color(0x88FFFFFF))
+                    Text(text = "NebulaNotes", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "Tap to enter", color = Color(0x88FFFFFF))
                 }
             }
         }
@@ -100,7 +103,11 @@ fun StellarApp(viewModel: StellarViewModel, appPrefs: AppPreferences, chatVm: Ch
         Screen.Main -> MainScreen(
             vm = viewModel,
             onOpenChat = { note ->
-                if (note != null) chatVm.newConversation(note) else if (chatVm.conversations.isEmpty()) chatVm.newConversation()
+                if (note != null) {
+                    chatVm.newConversation(note)
+                } else if (chatVm.conversations.isEmpty()) {
+                    chatVm.newConversation()
+                }
                 screen = Screen.Chat
             },
             onOpenSettings = { screen = Screen.Settings }
@@ -117,19 +124,22 @@ fun StellarApp(viewModel: StellarViewModel, appPrefs: AppPreferences, chatVm: Ch
             onBack = { screen = Screen.Main }
         )
 
-        Screen.Settings -> SettingsScreen(appPrefs = appPrefs, onBack = { screen = Screen.Main })
+        Screen.Settings -> SettingsScreen(
+            appPrefs = appPrefs,
+            onBack = { screen = Screen.Main }
+        )
     }
 }
 
 @Composable
 private fun MainScreen(vm: StellarViewModel, onOpenChat: (Note?) -> Unit, onOpenSettings: () -> Unit) {
     val state by vm.uiState.collectAsStateWithLifecycle()
-    var tab by remember { mutableStateOf(AppTab.Galaxy) }
 
+    var tab by remember { mutableStateOf(AppTab.Galaxy) }
     var selected by remember { mutableStateOf<Note?>(null) }
+
     var showEditor by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Note?>(null) }
-
     var draftTitle by remember { mutableStateOf("") }
     var draftContent by remember { mutableStateOf("") }
     var draftStar by remember { mutableStateOf(false) }
@@ -139,10 +149,10 @@ private fun MainScreen(vm: StellarViewModel, onOpenChat: (Note?) -> Unit, onOpen
     var camY by remember { mutableFloatStateOf(0f) }
     var zoom by remember { mutableFloatStateOf(1f) }
 
-    Surface(Modifier.fillMaxSize(), color = Deep) {
-        Box(Modifier.fillMaxSize()) {
-            if (tab == AppTab.Galaxy) {
-                StarFieldView(
+    Surface(modifier = Modifier.fillMaxSize(), color = Deep) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (tab) {
+                AppTab.Galaxy -> StarFieldView(
                     notes = state.notes,
                     tilt = tilt,
                     camX = camX,
@@ -160,72 +170,78 @@ private fun MainScreen(vm: StellarViewModel, onOpenChat: (Note?) -> Unit, onOpen
                     },
                     onTapNote = { selected = it }
                 )
-            } else if (tab == AppTab.List) {
-                NoteList(state.notes) { selected = it }
-            } else {
-                StatsPage(state.notes)
+
+                AppTab.List -> NoteList(notes = state.notes, onClick = { selected = it })
+                AppTab.Stats -> StatsPage(notes = state.notes)
             }
 
-            SearchBar(state.query, vm::onQueryChange)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 38.dp, start = 12.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SearchBar(query = state.query, onChange = vm::onQueryChange, modifier = Modifier.weight(1f))
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Default.Settings, contentDescription = "settings", tint = Color.White)
+                }
+            }
 
             Row(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                TabChip("Galaxy", tab == AppTab.Galaxy) { tab = AppTab.Galaxy }
-                TabChip("List", tab == AppTab.List) { tab = AppTab.List }
-                TabChip("Stats", tab == AppTab.Stats) { tab = AppTab.Stats }
+                TabChip(text = "Galaxy", selected = tab == AppTab.Galaxy) { tab = AppTab.Galaxy }
+                TabChip(text = "List", selected = tab == AppTab.List) { tab = AppTab.List }
+                TabChip(text = "Stats", selected = tab == AppTab.Stats) { tab = AppTab.Stats }
             }
 
             Column(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 90.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                FloatingActionButton(onClick = { onOpenChat(null) }, containerColor = Color(0xFF2A4A7A)) {
+                FloatingActionButton(onClick = { onOpenChat(selected) }, containerColor = Color(0xFF2A4A7A)) {
                     Icon(Icons.Default.Chat, contentDescription = "chat", tint = Color.White)
                 }
-                FloatingActionButton(onClick = {
-                    editing = null
-                    draftTitle = ""
-                    draftContent = ""
-                    draftStar = false
-                    showEditor = true
-                }, containerColor = Blue) {
+                FloatingActionButton(
+                    onClick = {
+                        editing = null
+                        draftTitle = ""
+                        draftContent = ""
+                        draftStar = false
+                        showEditor = true
+                    },
+                    containerColor = Blue
+                ) {
                     Icon(Icons.Default.Add, contentDescription = "add", tint = Color.White)
                 }
             }
 
-            if (selected != null) {
+            selected?.let { note ->
                 NotePanel(
-                    note = selected!!,
+                    note = note,
                     onClose = { selected = null },
                     onEdit = {
-                        editing = selected
-                        draftTitle = selected!!.title
-                        draftContent = selected!!.content
-                        draftStar = selected!!.starred
+                        editing = note
+                        draftTitle = note.title
+                        draftContent = note.content
+                        draftStar = note.starred
                         showEditor = true
                     },
-                    onDelete = {
-                        vm.deleteNote(selected!!)
-                        selected = null
-                    },
                     onToggleStar = {
-                        vm.toggleStar(selected!!)
-                        selected = selected!!.copy(starred = !selected!!.starred)
+                        vm.toggleStar(note)
+                        selected = note.copy(starred = !note.starred)
                     },
-                    onAskAi = { onOpenChat(selected) }
+                    onAskAi = { onOpenChat(note) }
                 )
             }
 
             if (showEditor) {
-                EditorDialog(
+                EditorOverlay(
                     title = draftTitle,
                     content = draftContent,
                     starred = draftStar,
-                    onTitle = { draftTitle = it },
-                    onContent = { draftContent = it },
-                    onStar = { draftStar = it },
+                    onTitleChange = { draftTitle = it },
+                    onContentChange = { draftContent = it },
+                    onStarChange = { draftStar = it },
                     onCancel = { showEditor = false },
                     onSave = {
                         vm.addOrUpdate(editing, draftTitle, draftContent, draftStar)
@@ -238,52 +254,55 @@ private fun MainScreen(vm: StellarViewModel, onOpenChat: (Note?) -> Unit, onOpen
 }
 
 @Composable
-private fun SearchBar(query: String, onChange: (String) -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 42.dp)) {
-        Card(colors = CardDefaults.cardColors(containerColor = Color(0x660B1328))) {
-            BasicTextField(
-                value = query,
-                onValueChange = onChange,
-                textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
-                cursorBrush = SolidColor(Blue),
-                modifier = Modifier.fillMaxWidth().padding(14.dp),
-                decorationBox = { inner ->
-                    if (query.isEmpty()) Text("Search notes...", color = Color(0x66FFFFFF))
-                    inner()
-                }
-            )
-        }
+private fun SearchBar(query: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = Color(0x660B1328))) {
+        BasicTextField(
+            value = query,
+            onValueChange = onChange,
+            textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
+            cursorBrush = SolidColor(Blue),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            decorationBox = { inner ->
+                if (query.isBlank()) Text("Search notes...", color = Color(0x66FFFFFF))
+                inner()
+            }
+        )
     }
 }
 
 @Composable
 private fun TabChip(text: String, selected: Boolean, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.clickable { onClick() },
+        modifier = Modifier.clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xAA1B2A4A) else Color(0x66081422))
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             val icon = when (text) {
                 "Galaxy" -> Icons.Default.Explore
                 "List" -> Icons.Default.FormatListBulleted
                 else -> Icons.Default.Info
             }
-            Icon(icon, contentDescription = text, tint = if (selected) Blue else Color(0x99FFFFFF), modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(text, color = if (selected) Blue else Color(0x99FFFFFF), fontSize = 12.sp)
+            Icon(imageVector = icon, contentDescription = text, tint = if (selected) Blue else Color(0x99FFFFFF), modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(text = text, color = if (selected) Blue else Color(0x99FFFFFF), fontSize = 12.sp)
         }
     }
 }
 
 @Composable
 private fun NoteList(notes: List<Note>, onClick: (Note) -> Unit) {
-    Column(Modifier.fillMaxSize().background(Color(0xCC040A1E)).padding(top = 90.dp, start = 12.dp, end = 12.dp)) {
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xCC040A1E)).padding(top = 96.dp, start = 12.dp, end = 12.dp)) {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(notes.sortedByDescending { it.updatedAt }) { n ->
-                Card(modifier = Modifier.fillMaxWidth().clickable { onClick(n) }, colors = CardDefaults.cardColors(containerColor = Color(0xFF0B1530))) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(n.title, color = if (n.starred) Gold else Color.White, fontWeight = FontWeight.SemiBold)
-                        if (n.content.isNotBlank()) Text(n.content, color = Color(0xAAFFFFFF), maxLines = 2)
+            items(notes.sortedByDescending { it.updatedAt }) { note ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { onClick(note) },
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0B1530))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(text = note.title, color = if (note.starred) Gold else Color.White, fontWeight = FontWeight.SemiBold)
+                        if (note.content.isNotBlank()) {
+                            Text(text = note.content, color = Color(0xAAFFFFFF), maxLines = 2)
+                        }
                     }
                 }
             }
@@ -294,51 +313,49 @@ private fun NoteList(notes: List<Note>, onClick: (Note) -> Unit) {
 @Composable
 private fun StatsPage(notes: List<Note>) {
     val starred = notes.count { it.starred }
-    val totalChars = notes.sumOf { it.content.length }
+    val chars = notes.sumOf { it.content.length }
     Column(
         modifier = Modifier.fillMaxSize().background(Color(0xCC040A1E)).padding(top = 120.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Total notes: ${notes.size}", color = Color.White, fontSize = 22.sp)
-        Spacer(Modifier.height(10.dp))
-        Text("Starred: $starred", color = Gold)
-        Spacer(Modifier.height(10.dp))
-        Text("Characters: $totalChars", color = Color(0xCCFFFFFF))
+        Text(text = "Total notes: ${notes.size}", color = Color.White, fontSize = 22.sp)
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(text = "Starred: $starred", color = Gold)
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(text = "Characters: $chars", color = Color(0xCCFFFFFF))
     }
 }
 
 @Composable
-private fun NotePanel(
-    note: Note,
-    onClose: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onToggleStar: () -> Unit,
-    onAskAi: () -> Unit
-) {
+private fun NotePanel(note: Note, onClose: () -> Unit, onEdit: () -> Unit, onToggleStar: () -> Unit, onAskAi: () -> Unit) {
     Card(
         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xEE0C1733))
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(note.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(onClick = onToggleStar) { Icon(Icons.Default.Star, null, tint = if (note.starred) Gold else Color(0x55FFFFFF)) }
-                IconButton(onClick = onClose) { Icon(Icons.Default.Close, null, tint = Color.White) }
-            }
-            Text(note.content.ifBlank { "No content" }, color = Color(0xCCFFFFFF), modifier = Modifier.height(120.dp).verticalScroll(rememberScrollState()))
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onAskAi, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A4A7A))) { Text("Ask AI") }
-                Button(onClick = onEdit, colors = ButtonDefaults.buttonColors(containerColor = Blue)) {
-                    Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Edit")
+                Text(text = note.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                IconButton(onClick = onToggleStar) {
+                    Icon(Icons.Default.Star, contentDescription = "star", tint = if (note.starred) Gold else Color(0x55FFFFFF))
                 }
-                Button(onClick = onDelete, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7A2A2A))) {
-                    Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Delete")
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.Close, contentDescription = "close", tint = Color.White)
+                }
+            }
+            Text(
+                text = if (note.content.isBlank()) "No content" else note.content,
+                color = Color(0xCCFFFFFF),
+                modifier = Modifier.height(120.dp).verticalScroll(rememberScrollState())
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onAskAi, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A4A7A))) {
+                    Text("Ask AI")
+                }
+                Button(onClick = onEdit, colors = ButtonDefaults.buttonColors(containerColor = Blue)) {
+                    Icon(Icons.Default.Edit, contentDescription = "edit", modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Edit")
                 }
             }
         }
@@ -346,24 +363,24 @@ private fun NotePanel(
 }
 
 @Composable
-private fun BoxScope.EditorDialog(
+private fun BoxScope.EditorOverlay(
     title: String,
     content: String,
     starred: Boolean,
-    onTitle: (String) -> Unit,
-    onContent: (String) -> Unit,
-    onStar: (Boolean) -> Unit,
+    onTitleChange: (String) -> Unit,
+    onContentChange: (String) -> Unit,
+    onStarChange: (Boolean) -> Unit,
     onCancel: () -> Unit,
     onSave: () -> Unit
 ) {
-    Box(Modifier.fillMaxSize().background(Color(0x88000000)), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0x88000000)), contentAlignment = Alignment.Center) {
         Card(modifier = Modifier.fillMaxWidth().padding(16.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF111E3F))) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Edit note", color = Color.White, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(10.dp))
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Edit note", color = Color.White, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
                     value = title,
-                    onValueChange = onTitle,
+                    onValueChange = onTitleChange,
                     label = { Text("Title") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -371,36 +388,40 @@ private fun BoxScope.EditorDialog(
                         focusedBorderColor = Blue,
                         unfocusedBorderColor = Color(0x44FFFFFF),
                         focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedLabelColor = Blue,
-                        unfocusedLabelColor = Color(0x88FFFFFF)
+                        unfocusedTextColor = Color.White
                     )
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
                     value = content,
-                    onValueChange = onContent,
+                    onValueChange = onContentChange,
                     label = { Text("Content") },
                     modifier = Modifier.fillMaxWidth().height(140.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Blue,
                         unfocusedBorderColor = Color(0x44FFFFFF),
                         focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedLabelColor = Blue,
-                        unfocusedLabelColor = Color(0x88FFFFFF)
+                        unfocusedTextColor = Color.White
                     )
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Starred", color = Color.White, modifier = Modifier.weight(1f))
-                    Switch(checked = starred, onCheckedChange = onStar, colors = SwitchDefaults.colors(checkedThumbColor = Blue))
+                    Text(text = "Starred", color = Color.White, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = starred,
+                        onCheckedChange = onStarChange,
+                        colors = SwitchDefaults.colors(checkedThumbColor = Blue)
+                    )
                 }
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = onCancel, colors = ButtonDefaults.buttonColors(containerColor = Color(0x552A3A5A))) { Text("Cancel") }
-                    Spacer(Modifier.width(8.dp))
-                    Button(onClick = onSave, colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Save") }
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Button(onClick = onCancel, colors = ButtonDefaults.buttonColors(containerColor = Color(0x55334466))) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = onSave, colors = ButtonDefaults.buttonColors(containerColor = Blue)) {
+                        Text("Save")
+                    }
                 }
             }
         }
@@ -410,53 +431,78 @@ private fun BoxScope.EditorDialog(
 @Composable
 private fun SettingsScreen(appPrefs: AppPreferences, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val sUrl by appPrefs.apiBaseUrl.collectAsState(initial = "")
-    val sKey by appPrefs.apiKey.collectAsState(initial = "")
-    val sModel by appPrefs.modelName.collectAsState(initial = "")
-    val sThink by appPrefs.enableThinking.collectAsState(initial = true)
 
-    var url by remember(sUrl) { mutableStateOf(sUrl) }
-    var key by remember(sKey) { mutableStateOf(sKey) }
-    var model by remember(sModel) { mutableStateOf(sModel) }
-    var thinking by remember(sThink) { mutableStateOf(sThink) }
+    val currentUrl by appPrefs.apiBaseUrl.collectAsState(initial = "")
+    val currentKey by appPrefs.apiKey.collectAsState(initial = "")
+    val currentModel by appPrefs.modelName.collectAsState(initial = "")
+    val currentThinking by appPrefs.enableThinking.collectAsState(initial = true)
 
-    val fc = OutlinedTextFieldDefaults.colors(
+    var url by remember(currentUrl) { mutableStateOf(currentUrl) }
+    var key by remember(currentKey) { mutableStateOf(currentKey) }
+    var model by remember(currentModel) { mutableStateOf(currentModel) }
+    var thinking by remember(currentThinking) { mutableStateOf(currentThinking) }
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = Blue,
         unfocusedBorderColor = Color(0x33FFFFFF),
         focusedTextColor = Color.White,
         unfocusedTextColor = Color.White,
-        cursorColor = Blue,
-        focusedLabelColor = Blue,
-        unfocusedLabelColor = Color(0x88FFFFFF)
+        cursorColor = Blue
     )
 
-    Surface(Modifier.fillMaxSize(), color = Deep) {
-        Column(Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
-            Spacer(Modifier.height(28.dp))
+    Surface(modifier = Modifier.fillMaxSize(), color = Deep) {
+        Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
+            Spacer(modifier = Modifier.height(28.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.Close, null, tint = Color.White) }
-                Text("Settings", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.Close, contentDescription = "close", tint = Color.White)
+                }
+                Text(text = "Settings", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.height(18.dp))
-            OutlinedTextField(url, { url = it }, label = { Text("Base URL") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fc)
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(key, { key = it }, label = { Text("API Key") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), colors = fc)
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(model, { model = it }, label = { Text("Model") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fc)
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Enable thinking", color = Color.White, modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(14.dp))
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = { Text("Base URL") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedTextField(
+                value = key,
+                onValueChange = { key = it },
+                label = { Text("API Key") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedTextField(
+                value = model,
+                onValueChange = { model = it },
+                label = { Text("Model") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "Enable thinking", color = Color.White, modifier = Modifier.weight(1f))
                 Switch(checked = thinking, onCheckedChange = { thinking = it }, colors = SwitchDefaults.colors(checkedThumbColor = Blue))
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(18.dp))
             Button(
                 onClick = {
                     scope.launch { appPrefs.saveApiSettings(url, key, model, thinking) }
                     onBack()
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Blue),
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Save") }
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Blue)
+            ) {
+                Text(text = "Save")
+            }
         }
     }
 }

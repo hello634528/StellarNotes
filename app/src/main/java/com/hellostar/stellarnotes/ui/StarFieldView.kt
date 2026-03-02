@@ -21,12 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import com.hellostar.stellarnotes.data.Note
 import kotlin.math.absoluteValue
-import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -39,22 +39,28 @@ private data class BgStar(
     val layer: Int
 )
 
-private data class DustParticle(
-    val x: Float, val y: Float,
-    val size: Float, val speed: Float,
-    val phase: Float, val drift: Float
-)
-
 fun computeStarPosition(note: Note, all: List<Note>): StarPos {
-    // Truly random scatter using note.id as stable seed
     val rng = java.util.Random(note.id * 73L + 17L)
-    val range = 800f + all.size * 25f
+    val range = 800f + all.size * 30f
     val x = (rng.nextFloat() - 0.5f) * range * 2f
     val y = (rng.nextFloat() - 0.5f) * range * 2f
     val z = rng.nextFloat() * 200f
-    // Starred notes: pull toward center
     val factor = if (note.starred) 0.35f else 1f
     return StarPos(x * factor, y * factor, z)
+}
+
+private fun DrawScope.drawGlow(color: Color, radius: Float, center: Offset) {
+    if (radius > 0f) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(color, Color.Transparent),
+                center = center,
+                radius = radius
+            ),
+            radius = radius,
+            center = center
+        )
+    }
 }
 
 @Composable
@@ -71,119 +77,156 @@ fun StarFieldView(
     val bgStars = remember {
         val rng = java.util.Random(42L)
         List(300) {
-            BgStar(rng.nextFloat(), rng.nextFloat(),
-                rng.nextFloat() * 1.8f + 0.2f,
-                rng.nextFloat() * 0.4f + 0.1f,
-                rng.nextFloat() * 2f + 0.5f,
-                rng.nextFloat() * 6.28f,
-                rng.nextInt(3))
-        }
-    }
-    val dustParticles = remember {
-        val rng = java.util.Random(99L)
-        List(40) {
-            DustParticle(rng.nextFloat(), rng.nextFloat(),
-                rng.nextFloat() * 1.5f + 0.5f,
-                rng.nextFloat() * 0.3f + 0.1f,
-                rng.nextFloat() * 6.28f,
-                (rng.nextFloat() - 0.5f) * 0.02f)
+            BgStar(
+                x = rng.nextFloat(), y = rng.nextFloat(),
+                size = rng.nextFloat() * 1.6f + 0.2f,
+                baseAlpha = rng.nextFloat() * 0.35f + 0.08f,
+                speed = rng.nextFloat() * 2f + 0.5f,
+                phase = rng.nextFloat() * 6.28f,
+                layer = rng.nextInt(3)
+            )
         }
     }
 
     val inf = rememberInfiniteTransition(label = "f")
-    val time by inf.animateFloat(0f, 6.2832f, infiniteRepeatable(tween(10000, easing = LinearEasing), RepeatMode.Restart), label = "t")
-    val shootT by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Restart), label = "s")
-    val pulse by inf.animateFloat(0f, 6.2832f, infiniteRepeatable(tween(3000, easing = LinearEasing), RepeatMode.Restart), label = "p")
-    val ringRot by inf.animateFloat(0f, 360f, infiniteRepeatable(tween(20000, easing = LinearEasing), RepeatMode.Restart), label = "r")
+    val time by inf.animateFloat(
+        initialValue = 0f, targetValue = 6.2832f,
+        animationSpec = infiniteRepeatable(tween(10000, easing = LinearEasing), RepeatMode.Restart),
+        label = "t"
+    )
+    val shootT by inf.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Restart),
+        label = "s"
+    )
+    val pulse by inf.animateFloat(
+        initialValue = 0f, targetValue = 6.2832f,
+        animationSpec = infiniteRepeatable(tween(3000, easing = LinearEasing), RepeatMode.Restart),
+        label = "p"
+    )
 
     val labelPaint = remember {
-        NativePaint().apply { isAntiAlias = true; setShadowLayer(8f, 0f, 2f, android.graphics.Color.parseColor("#CC000000")) }
+        NativePaint().apply {
+            isAntiAlias = true
+            setShadowLayer(8f, 0f, 2f, android.graphics.Color.parseColor("#CC000000"))
+        }
     }
-    val bg = Brush.verticalGradient(listOf(Color(0xFF010308), Color(0xFF030918), Color(0xFF06122C), Color(0xFF091D42), Color(0xFF050E1E)))
+
+    val bg = Brush.verticalGradient(
+        listOf(
+            Color(0xFF010308), Color(0xFF030918), Color(0xFF06122C),
+            Color(0xFF091D42), Color(0xFF050E1E)
+        )
+    )
 
     val cCamX by rememberUpdatedState(camX)
     val cCamY by rememberUpdatedState(camY)
     val cCamZoom by rememberUpdatedState(camZoom)
     val cTilt by rememberUpdatedState(tilt)
 
-    Box(modifier = Modifier.fillMaxSize().background(bg)
-        .pointerInput(notes) {
-            detectTapGestures(
-                onDoubleTap = { onResetCamera() },
-                onTap = { tap ->
-                    val cx = size.width / 2f; val cy = size.height / 2f
-                    val tx = cTilt.x * 80f; val ty = cTilt.y * 80f
-                    var best: Note? = null; var bestD = Float.MAX_VALUE
-                    for (n in notes) {
-                        val p = computeStarPosition(n, notes)
-                        val dep = 1f / (1f + p.z.absoluteValue / 220f)
-                        val sx = cx + (p.x + cCamX + tx) * dep * cCamZoom
-                        val sy = cy + (p.y + cCamY + ty) * dep * cCamZoom
-                        val hitR = (12f * dep * cCamZoom * 3f).coerceAtLeast(70f)
-                        val dx = tap.x - sx; val dy = tap.y - sy
-                        val dist = sqrt(dx * dx + dy * dy)
-                        if (dist < hitR && dist < bestD) { bestD = dist; best = n }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(bg)
+            .pointerInput(notes) {
+                detectTapGestures(
+                    onDoubleTap = { onResetCamera() },
+                    onTap = { tap ->
+                        val cx = size.width / 2f
+                        val cy = size.height / 2f
+                        val tx = cTilt.x * 80f
+                        val ty = cTilt.y * 80f
+                        var best: Note? = null
+                        var bestD = Float.MAX_VALUE
+                        for (n in notes) {
+                            val p = computeStarPosition(n, notes)
+                            val dep = 1f / (1f + p.z.absoluteValue / 220f)
+                            val sx = cx + (p.x + cCamX + tx) * dep * cCamZoom
+                            val sy = cy + (p.y + cCamY + ty) * dep * cCamZoom
+                            val hitR = (12f * dep * cCamZoom * 3f).coerceAtLeast(70f)
+                            val dx = tap.x - sx
+                            val dy = tap.y - sy
+                            val dist = sqrt(dx * dx + dy * dy)
+                            if (dist < hitR && dist < bestD) {
+                                bestD = dist
+                                best = n
+                            }
+                        }
+                        best?.let(onTapNote)
                     }
-                    best?.let(onTapNote)
+                )
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    onPanZoom(pan.x, pan.y, zoom)
                 }
-            )
-        }
-        .pointerInput(Unit) { detectTransformGestures { _, pan, zoom, _ -> onPanZoom(pan.x, pan.y, zoom) } }
+            }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width; val h = size.height
-            val cx = w / 2f; val cy = h / 2f
-            val tx = tilt.x * 80f; val ty = tilt.y * 80f
+            val w = size.width
+            val h = size.height
+            val cx = w / 2f
+            val cy = h / 2f
+            val tx = tilt.x * 80f
+            val ty = tilt.y * 80f
 
-            // === Bg stars (tiny, dim) ===
+            // === Background twinkling stars (tiny, dim) ===
             for (s in bgStars) {
                 val px = when (s.layer) { 0 -> 0.04f; 1 -> 0.12f; else -> 0.25f }
                 val vx = s.x * w + (camX * px + tx * px) * camZoom
                 val vy = s.y * h + (camY * px + ty * px) * camZoom
-                val bx = (vx % w + w) % w; val by = (vy % h + h) % h
+                val bx = (vx % w + w) % w
+                val by = (vy % h + h) % h
                 val twinkle = sin(time * s.speed + s.phase) * 0.5f + 0.5f
                 val a = s.baseAlpha * (0.2f + twinkle * 0.8f)
-                val c = when (s.layer) { 0 -> Color(0xFF7088B0); 1 -> Color(0xFF9AB0DA); else -> Color(0xFFCCD8F0) }
+                val c = when (s.layer) {
+                    0 -> Color(0xFF7088B0)
+                    1 -> Color(0xFF9AB0DA)
+                    else -> Color(0xFFCCD8F0)
+                }
                 val r = s.size * (0.8f + camZoom * 0.2f)
-                if (r > 1.2f) drawCircle(c.copy(alpha = a * 0.2f), r * 3f, Offset(bx, by))
-                drawCircle(c.copy(alpha = a), r, Offset(bx, by))
+                if (r > 1.2f) {
+                    drawCircle(c.copy(alpha = (a * 0.15f).coerceIn(0f, 1f)), r * 3f, Offset(bx, by))
+                }
+                drawCircle(c.copy(alpha = a.coerceIn(0f, 1f)), r, Offset(bx, by))
             }
 
-            // === Floating dust ===
-            for (d in dustParticles) {
-                val dx = ((d.x + time * d.drift) % 1f + 1f) % 1f
-                val dy = ((d.y + time * d.speed * 0.01f) % 1f + 1f) % 1f
-                val a = (sin(time * 0.8f + d.phase) * 0.3f + 0.3f).coerceIn(0f, 0.5f)
-                drawCircle(Color(0xFFAABBDD).copy(alpha = a), d.size, Offset(dx * w, dy * h))
-            }
+            // === Subtle nebula wisps ===
+            drawGlow(Color(0x0A1830A0), 400f * camZoom, Offset(cx + camX * 0.15f * camZoom, cy + camY * 0.15f * camZoom))
+            drawGlow(Color(0x08401860), 350f * camZoom, Offset(cx + (w * 0.3f + camX * 0.1f) * camZoom, cy + (-h * 0.2f + camY * 0.1f) * camZoom))
 
-            // === Subtle nebula wisps (very faint radial gradients) ===
-            val drawWisp = { color: Color, radius: Float, center: Offset ->
-                if (radius > 0) drawCircle(brush = Brush.radialGradient(listOf(color, Color.Transparent), center, radius), radius = radius, center = center)
-            }
-            drawWisp(Color(0x0D1830A0), 400f * camZoom, Offset(cx + camX * 0.15f * camZoom, cy + camY * 0.15f * camZoom))
-            drawWisp(Color(0x0A401860), 350f * camZoom, Offset(cx + (w * 0.3f + camX * 0.1f) * camZoom, cy + (-h * 0.2f + camY * 0.1f) * camZoom))
-
-            // === Shooting stars ===
+            // === Shooting star 1 ===
             if (shootT < 0.15f) {
                 val t = shootT / 0.15f
-                val sx = w * 0.85f; val sy = h * 0.04f; val ex = w * 0.1f; val ey = h * 0.35f
-                val curX = sx + (ex - sx) * t; val curY = sy + (ey - sy) * t
-                val dX = ex - sx; val dY = ey - sy; val len = sqrt(dX * dX + dY * dY)
-                val tailX = curX - dX / len * 100f; val tailY = curY - dY / len * 100f
-                val a = (1f - t) * 0.8f
-                drawLine(Color.White.copy(alpha = a * 0.5f), Offset(tailX, tailY), Offset(curX, curY), 2f)
-                drawCircle(Color.White.copy(alpha = a), 2.5f, Offset(curX, curY))
+                val ssx = w * 0.85f; val ssy = h * 0.04f
+                val ex = w * 0.1f; val ey = h * 0.35f
+                val curX = ssx + (ex - ssx) * t
+                val curY = ssy + (ey - ssy) * t
+                val dX = ex - ssx; val dY = ey - ssy
+                val len = sqrt(dX * dX + dY * dY)
+                val tailX = curX - dX / len * 100f
+                val tailY = curY - dY / len * 100f
+                val alpha = ((1f - t) * 0.8f).coerceIn(0f, 1f)
+                drawLine(Color.White.copy(alpha = (alpha * 0.5f).coerceIn(0f, 1f)), Offset(tailX, tailY), Offset(curX, curY), 2f)
+                drawCircle(Color.White.copy(alpha = alpha), 2.5f, Offset(curX, curY))
             }
+            // === Shooting star 2 ===
             val s2 = (shootT + 0.6f) % 1f
             if (s2 < 0.12f) {
                 val t = s2 / 0.12f
-                val sx2 = w * 0.2f; val sy2 = h * 0.15f; val ex2 = w * 0.7f; val ey2 = h * 0.55f
-                val curX = sx2 + (ex2 - sx2) * t; val curY = sy2 + (ey2 - sy2) * t
-                val a = (1f - t) * 0.6f
-                val dX = ex2 - sx2; val dY = ey2 - sy2; val len = sqrt(dX * dX + dY * dY)
-                drawLine(Color(0xFFAABBFF).copy(alpha = a * 0.4f), Offset(curX - dX / len * 80f, curY - dY / len * 80f), Offset(curX, curY), 1.5f)
-                drawCircle(Color(0xFFAABBFF).copy(alpha = a), 2f, Offset(curX, curY))
+                val sx2 = w * 0.2f; val sy2 = h * 0.15f
+                val ex2 = w * 0.7f; val ey2 = h * 0.55f
+                val curX = sx2 + (ex2 - sx2) * t
+                val curY = sy2 + (ey2 - sy2) * t
+                val alpha = ((1f - t) * 0.6f).coerceIn(0f, 1f)
+                val dX = ex2 - sx2; val dY = ey2 - sy2
+                val len = sqrt(dX * dX + dY * dY)
+                drawLine(
+                    Color(0xFFAABBFF).copy(alpha = (alpha * 0.4f).coerceIn(0f, 1f)),
+                    Offset(curX - dX / len * 80f, curY - dY / len * 80f),
+                    Offset(curX, curY), 1.5f
+                )
+                drawCircle(Color(0xFFAABBFF).copy(alpha = alpha), 2f, Offset(curX, curY))
             }
 
             // === Constellation lines between starred notes ===
@@ -192,14 +235,20 @@ fun StarFieldView(
                 val positions = starredNotes.map { n ->
                     val p = computeStarPosition(n, notes)
                     val dep = 1f / (1f + p.z.absoluteValue / 220f)
-                    Offset(cx + (p.x + camX + tx) * dep * camZoom, cy + (p.y + camY + ty) * dep * camZoom)
+                    Offset(
+                        cx + (p.x + camX + tx) * dep * camZoom,
+                        cy + (p.y + camY + ty) * dep * camZoom
+                    )
                 }
                 for (i in 0 until positions.size - 1) {
-                    drawLine(Color(0xFFFFD86B).copy(alpha = 0.08f), positions[i], positions[i + 1], 1f * camZoom)
+                    drawLine(
+                        Color(0xFFFFD86B).copy(alpha = 0.08f),
+                        positions[i], positions[i + 1], 1f * camZoom
+                    )
                 }
             }
 
-            // === Note stars (BIG, glowing, with ring — clearly distinct from bg) ===
+            // === Note stars (big, glowing, with ring) ===
             for (note in notes.reversed()) {
                 val pos = computeStarPosition(note, notes)
                 val depth = 1f / (1f + pos.z.absoluteValue / 220f)
@@ -210,19 +259,30 @@ fun StarFieldView(
                 val baseR = if (note.starred) 7f else 5f
                 val r = baseR * depth * camZoom
                 val col = if (note.starred) Color(0xFFFFD86B) else Color(0xFFB0D4FF)
-                val gp = if (note.starred) 1f + sin(pulse + note.id.toFloat() * 1.7f) * 0.25f else 1f + sin(pulse + note.id.toFloat()) * 0.1f
+                val gp = if (note.starred) {
+                    1f + sin(pulse + note.id.toFloat() * 1.7f) * 0.25f
+                } else {
+                    1f + sin(pulse + note.id.toFloat()) * 0.1f
+                }
 
-                // Outer glow (radial gradient, NOT flat circle)
-                drawWisp(col.copy(alpha = 0.08f * gp), r * 10f, Offset(sx, sy))
-                drawWisp(col.copy(alpha = 0.18f), r * 5f, Offset(sx, sy))
+                // Outer glow
+                drawGlow(col.copy(alpha = (0.08f * gp).coerceIn(0f, 1f)), r * 10f, Offset(sx, sy))
+                drawGlow(col.copy(alpha = 0.18f), r * 5f, Offset(sx, sy))
 
-                // Animated ring (unique to note stars)
+                // Animated ring
                 val ringR = r * 3.5f * gp
-                drawCircle(col.copy(alpha = 0.2f * gp), ringR, Offset(sx, sy), style = Stroke(width = 1.2f * camZoom))
-                // Second ring (only starred)
+                drawCircle(
+                    col.copy(alpha = (0.2f * gp).coerceIn(0f, 1f)),
+                    ringR, Offset(sx, sy),
+                    style = Stroke(width = 1.2f * camZoom)
+                )
                 if (note.starred) {
                     val ringR2 = r * 5f * gp
-                    drawCircle(col.copy(alpha = 0.1f), ringR2, Offset(sx, sy), style = Stroke(width = 0.8f * camZoom))
+                    drawCircle(
+                        col.copy(alpha = 0.1f),
+                        ringR2, Offset(sx, sy),
+                        style = Stroke(width = 0.8f * camZoom)
+                    )
                 }
 
                 // Core
@@ -240,10 +300,18 @@ fun StarFieldView(
                 // Label
                 val title = note.title.take(10)
                 val la = (depth * 255).toInt().coerceIn(80, 255)
-                labelPaint.color = if (note.starred) android.graphics.Color.argb(la, 255, 216, 107)
-                                   else android.graphics.Color.argb(la, 176, 212, 255)
+                labelPaint.color = if (note.starred) {
+                    android.graphics.Color.argb(la, 255, 216, 107)
+                } else {
+                    android.graphics.Color.argb(la, 176, 212, 255)
+                }
                 labelPaint.textSize = (22f * depth * camZoom).coerceIn(11f, 38f)
-                drawContext.canvas.nativeCanvas.drawText(title, sx + r * 2.5f + 6f * camZoom, sy + labelPaint.textSize * 0.35f, labelPaint)
+                drawContext.canvas.nativeCanvas.drawText(
+                    title,
+                    sx + r * 2.5f + 6f * camZoom,
+                    sy + labelPaint.textSize * 0.35f,
+                    labelPaint
+                )
             }
         }
     }

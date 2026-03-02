@@ -48,22 +48,14 @@ class ChatApiClient {
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) return@withContext Result.failure(Exception("空响应"))
 
-            // 极简稳健解析：直接提取 "id":"..."，避免 provider 各种 JSON 结构差异导致崩溃
+            // 稳健策略：只提取 id 字段，避免解析不兼容结构导致崩溃/过量数据
             val models = linkedSetOf<String>()
             val idRegex = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"")
             idRegex.findAll(body).forEach { m ->
                 m.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(models::add)
             }
 
-            // 某些接口可能返回纯字符串数组，尝试再提取可能的模型名（保守）
-            val strRegex = Regex("\"([a-zA-Z0-9._:/\\-]{2,})\"")
-            if (models.isEmpty()) {
-                strRegex.findAll(body).map { it.groupValues[1] }
-                    .filter { it.contains("-") || it.contains("/") || it.contains("gpt", true) || it.contains("qwen", true) || it.contains("deepseek", true) }
-                    .forEach(models::add)
-            }
-
-            val cleaned = models.toList().sorted()
+            val cleaned = models.toList().sorted().take(500)
             if (cleaned.isEmpty()) Result.failure(Exception("未解析到任何模型")) else Result.success(cleaned)
         } catch (t: Throwable) {
             Result.failure(Exception(t.message ?: "获取模型失败"))

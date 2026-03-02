@@ -1,8 +1,14 @@
 package com.hellostar.stellarnotes.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,11 +37,15 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalDrawerSheet
@@ -61,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hellostar.stellarnotes.data.Note
+import com.hellostar.stellarnotes.ui.AppPreferences
 import kotlinx.coroutines.launch
 
 private val Deep = Color(0xFF040A1E)
@@ -72,14 +83,16 @@ private val ToolBubble = Color(0xFF0D2818)
 
 @Composable
 fun ChatScreen(
-    chatVm: ChatViewModel,
-    allNotes: List<Note>,
-    baseUrl: String, apiKey: String, model: String, enableThinking: Boolean,
+    chatVm: ChatViewModel, allNotes: List<Note>,
+    baseUrl: String, apiKey: String, defaultModel: String, enableThinking: Boolean,
+    modelList: List<String>, appPrefs: AppPreferences,
     onOpenSettings: () -> Unit, onBack: () -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showNotePicker by remember { mutableStateOf(false) }
+    var selectedModel by remember(defaultModel) { mutableStateOf(defaultModel) }
+    var showModelPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { if (chatVm.conversations.isEmpty()) chatVm.newConversation() }
 
@@ -94,53 +107,58 @@ fun ChatScreen(
     }) {
         Column(Modifier.fillMaxSize().background(Deep)) {
             // Top bar
-            Row(Modifier.fillMaxWidth().background(Color(0xFF060D20)).padding(top = 40.dp, bottom = 8.dp, start = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().background(Color(0xFF060D20)).padding(top = 40.dp, bottom = 4.dp, start = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) }
                 IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, null, tint = Color.White) }
-                Text(chatVm.currentConversation?.name ?: "AI \u5bf9\u8bdd", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(chatVm.currentConversation?.name ?: "AI \u5bf9\u8bdd", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (apiKey.isBlank()) Text("\u672a\u914d\u7f6e", color = Color(0xFFFF6B6B), fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x33FF6B6B)).padding(horizontal = 8.dp, vertical = 2.dp).clickable { onOpenSettings() })
             }
-
-            // Context notes chips
-            ContextNotesBar(chatVm, allNotes, showNotePicker, onTogglePicker = { showNotePicker = !showNotePicker })
-
-            // Note picker overlay
-            AnimatedVisibility(showNotePicker, enter = expandVertically(), exit = shrinkVertically()) {
-                NotePickerPanel(allNotes, chatVm.currentConversation?.contextNotes ?: emptyList(),
-                    onAdd = { chatVm.addContextNote(it) }, onDismiss = { showNotePicker = false })
-            }
-
-            // Messages
-            val conv = chatVm.currentConversation
-            val listState = rememberLazyListState()
-            val msgCount = (conv?.messages?.size ?: 0) + (if (chatVm.isStreaming.value) 1 else 0)
-            LaunchedEffect(msgCount) { if (msgCount > 0) listState.animateScrollToItem(msgCount - 1) }
-
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (conv != null) {
-                    items(conv.messages) { msg ->
-                        when (msg.role) {
-                            "tool_result" -> ToolResultBubble(msg)
-                            else -> MessageBubble(msg)
+            // Model selector
+            if (modelList.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().background(Color(0xFF060D20)).padding(horizontal = 12.dp, vertical = 4.dp).padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("\u6a21\u578b:", color = Color(0x66FFFFFF), fontSize = 11.sp); Spacer(Modifier.width(6.dp))
+                    Box {
+                        Row(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF152040)).clickable { showModelPicker = true }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(selectedModel.ifBlank { "\u9009\u62e9\u6a21\u578b" }, color = Blue, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+                            Spacer(Modifier.width(4.dp)); Icon(Icons.Default.KeyboardArrowDown, null, tint = Blue, modifier = Modifier.size(14.dp))
                         }
-                    }
-                    if (chatVm.isStreaming.value) item { StreamingBubble(chatVm.streamThinking.value, chatVm.streamContent.value) }
-                }
-                if (conv == null || (conv.messages.isEmpty() && !chatVm.isStreaming.value)) {
-                    item {
-                        Box(Modifier.fillMaxWidth().height(300.dp), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("\u2728", fontSize = 40.sp); Spacer(Modifier.height(12.dp))
-                                Text("\u5f00\u59cb\u5bf9\u8bdd", color = Color(0x66FFFFFF), fontSize = 16.sp)
-                                Spacer(Modifier.height(4.dp))
-                                Text("\u70b9\u51fb\u4e0a\u65b9 \uD83D\uDCCE \u6dfb\u52a0\u7b14\u8bb0\u4e0a\u4e0b\u6587", color = Color(0x44FFFFFF), fontSize = 12.sp)
-                                if (apiKey.isBlank()) { Spacer(Modifier.height(8.dp)); Text("\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e API", color = Color(0xFFFF6B6B), fontSize = 13.sp, modifier = Modifier.clickable { onOpenSettings() }) }
+                        DropdownMenu(expanded = showModelPicker, onDismissRequest = { showModelPicker = false }, modifier = Modifier.background(Color(0xFF0A1530)).widthIn(min = 200.dp)) {
+                            for (m in modelList) {
+                                DropdownMenuItem(text = { Text(m, color = if (m == selectedModel) Blue else Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    onClick = { selectedModel = m; showModelPicker = false; scope.launch { appPrefs.setDefaultModel(m) } },
+                                    modifier = Modifier.background(if (m == selectedModel) Color(0xFF152040) else Color.Transparent))
                             }
                         }
                     }
                 }
             }
-            ChatInputBar(enabled = !chatVm.isStreaming.value && apiKey.isNotBlank()) { chatVm.sendMessage(it, baseUrl, apiKey, model, enableThinking) }
+            // Context notes
+            ContextNotesBar(chatVm, allNotes, showNotePicker, onTogglePicker = { showNotePicker = !showNotePicker })
+            AnimatedVisibility(showNotePicker, enter = expandVertically(spring(dampingRatio = 0.8f)) + fadeIn(), exit = shrinkVertically(tween(200)) + fadeOut(tween(150))) {
+                NotePickerPanel(allNotes, chatVm.currentConversation?.contextNotes ?: emptyList(), onAdd = { chatVm.addContextNote(it) }, onDismiss = { showNotePicker = false })
+            }
+            // Messages
+            val conv = chatVm.currentConversation; val listState = rememberLazyListState()
+            val msgCount = (conv?.messages?.size ?: 0) + (if (chatVm.isStreaming.value) 1 else 0)
+            LaunchedEffect(msgCount) { if (msgCount > 0) listState.animateScrollToItem(msgCount - 1) }
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (conv != null) {
+                    items(conv.messages) { msg ->
+                        AnimatedVisibility(true, enter = slideInVertically(spring(dampingRatio = 0.7f)) { it / 2 } + fadeIn()) {
+                            when (msg.role) { "tool_result" -> ToolResultBubble(msg); else -> MessageBubble(msg) }
+                        }
+                    }
+                    if (chatVm.isStreaming.value) item { StreamingBubble(chatVm.streamThinking.value, chatVm.streamContent.value) }
+                }
+                if (conv == null || (conv.messages.isEmpty() && !chatVm.isStreaming.value)) {
+                    item { Box(Modifier.fillMaxWidth().height(300.dp), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("\u2728", fontSize = 40.sp); Spacer(Modifier.height(12.dp)); Text("\u5f00\u59cb\u5bf9\u8bdd", color = Color(0x66FFFFFF), fontSize = 16.sp)
+                        Spacer(Modifier.height(4.dp)); Text("\u70b9\u51fb\u4e0a\u65b9 \uD83D\uDCDD \u6dfb\u52a0\u7b14\u8bb0\u4e0a\u4e0b\u6587", color = Color(0x44FFFFFF), fontSize = 12.sp)
+                        if (apiKey.isBlank()) { Spacer(Modifier.height(8.dp)); Text("\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e API", color = Color(0xFFFF6B6B), fontSize = 13.sp, modifier = Modifier.clickable { onOpenSettings() }) }
+                    } } }
+                }
+            }
+            ChatInputBar(enabled = !chatVm.isStreaming.value && apiKey.isNotBlank()) { chatVm.sendMessage(it, baseUrl, apiKey, selectedModel.ifBlank { defaultModel }, enableThinking) }
         }
     }
 }
@@ -152,12 +170,12 @@ private fun ContextNotesBar(chatVm: ChatViewModel, allNotes: List<Note>, pickerO
     Row(Modifier.fillMaxWidth().background(Color(0xFF060D20)).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Default.NoteAdd, null, tint = if (pickerOpen) Blue else Color(0x66FFFFFF), modifier = Modifier.size(20.dp).clickable { onTogglePicker() })
         Spacer(Modifier.width(8.dp))
-        if (ctx.isEmpty()) {
-            Text("\u70b9\u51fb\u6dfb\u52a0\u7b14\u8bb0\u4e0a\u4e0b\u6587", color = Color(0x33FFFFFF), fontSize = 12.sp, modifier = Modifier.clickable { onTogglePicker() })
-        } else {
+        if (ctx.isEmpty()) { Text("\u70b9\u51fb\u6dfb\u52a0\u7b14\u8bb0\u4e0a\u4e0b\u6587", color = Color(0x33FFFFFF), fontSize = 12.sp, modifier = Modifier.clickable { onTogglePicker() }) }
+        else {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
                 for (note in ctx) {
                     Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xFF152040)).padding(start = 8.dp, end = 4.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (note.starred) { Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(10.dp)); Spacer(Modifier.width(3.dp)) }
                         Text(note.title.take(12), color = Blue, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Icon(Icons.Default.Close, null, tint = Color(0x66FFFFFF), modifier = Modifier.size(14.dp).clickable { chatVm.removeContextNote(note.id) })
                     }
@@ -170,7 +188,7 @@ private fun ContextNotesBar(chatVm: ChatViewModel, allNotes: List<Note>, pickerO
 @Composable
 private fun NotePickerPanel(allNotes: List<Note>, selected: List<Note>, onAdd: (Note) -> Unit, onDismiss: () -> Unit) {
     var search by remember { mutableStateOf("") }
-    val filtered = if (search.isBlank()) allNotes else allNotes.filter { it.title.contains(search, true) || it.content.contains(search, true) }
+    val filtered = if (search.isBlank()) allNotes.sortedByDescending { it.updatedAt } else allNotes.filter { it.title.contains(search, true) || it.content.contains(search, true) }
     val selectedIds = selected.map { it.id }.toSet()
     Column(Modifier.fillMaxWidth().background(Color(0xFF0A1225)).padding(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -178,23 +196,24 @@ private fun NotePickerPanel(allNotes: List<Note>, selected: List<Note>, onAdd: (
                 BasicTextField(search, { search = it }, textStyle = TextStyle(Color.White, 13.sp), cursorBrush = SolidColor(Blue), singleLine = true, modifier = Modifier.fillMaxWidth(),
                     decorationBox = { i -> if (search.isEmpty()) Text("\u641c\u7d22\u7b14\u8bb0...", color = Color(0x44FFFFFF), fontSize = 13.sp); i() })
             }
-            Spacer(Modifier.width(8.dp))
-            Text("\u5b8c\u6210", color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onDismiss() })
+            Spacer(Modifier.width(8.dp)); Text("\u5b8c\u6210", color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onDismiss() })
         }
         Spacer(Modifier.height(8.dp))
-        if (filtered.isEmpty()) {
-            Text("\u6ca1\u6709\u7b14\u8bb0", color = Color(0x44FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(8.dp))
-        } else {
-            LazyColumn(Modifier.height(200.dp)) {
+        if (filtered.isEmpty()) { Text("\u6ca1\u6709\u7b14\u8bb0", color = Color(0x44FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(8.dp)) }
+        else {
+            LazyColumn(Modifier.height(220.dp)) {
                 items(filtered, key = { it.id }) { note ->
                     val already = note.id in selectedIds
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (already) Color(0xFF152040) else Color.Transparent).clickable(enabled = !already) { onAdd(note) }.padding(10.dp, 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (already) Color(0xFF152040) else Color.Transparent).clickable { if (!already) onAdd(note) }.padding(10.dp, 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (note.starred) { Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(6.dp)) }
                         Column(Modifier.weight(1f)) {
                             Text(note.title, color = if (already) Blue else Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (note.content.isNotBlank()) Text(note.content.take(50), color = Color(0x55FFFFFF), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        if (already) Text("\u2713", color = Blue, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        else Text("+", color = Color(0x55FFFFFF), fontSize = 16.sp)
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(Color(0xFF1A3060)).clickable(enabled = !already) { onAdd(note) }, contentAlignment = Alignment.Center) {
+                            if (already) Text("\u2713", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            else Icon(Icons.Default.Add, null, tint = Blue, modifier = Modifier.size(16.dp))
+                        }
                     }
                 }
             }
@@ -210,7 +229,7 @@ private fun MessageBubble(msg: UiMessage) {
             var expanded by remember { mutableStateOf(false) }
             Column(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF0A1225)).clickable { expanded = !expanded }.padding(10.dp)) {
                 Text(if (expanded) "\uD83D\uDCA1 \u601d\u8003\u8fc7\u7a0b \u25B2" else "\uD83D\uDCA1 \u601d\u8003\u8fc7\u7a0b \u25BC", color = Color(0xFF7A9FCC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                AnimatedVisibility(expanded, enter = expandVertically(), exit = shrinkVertically()) {
+                AnimatedVisibility(expanded, enter = expandVertically(spring(dampingRatio = 0.8f)), exit = shrinkVertically(tween(200))) {
                     Text(msg.thinking, color = Color(0x99FFFFFF), fontSize = 13.sp, fontStyle = FontStyle.Italic, lineHeight = 20.sp, modifier = Modifier.padding(top = 6.dp))
                 }
             }; Spacer(Modifier.height(4.dp))
@@ -274,10 +293,8 @@ private fun ConversationDrawer(conversations: List<Conversation>, currentId: Lon
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (cur) Color(0xFF152040) else Color.Transparent).clickable { onSelect(conv.id) }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(conv.name, color = if (cur) Blue else Color.White, fontSize = 14.sp, fontWeight = if (cur) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
-                        Row {
-                            Text("${conv.messages.count { it.role == "user" || it.role == "assistant" }} \u6761", color = Color(0x55FFFFFF), fontSize = 11.sp)
-                            if (conv.contextNotes.isNotEmpty()) { Spacer(Modifier.width(6.dp)); Text("\uD83D\uDCCE${conv.contextNotes.size}", color = Color(0x55FFFFFF), fontSize = 11.sp) }
-                        }
+                        Row { Text("${conv.messages.count { it.role == "user" || it.role == "assistant" }} \u6761", color = Color(0x55FFFFFF), fontSize = 11.sp)
+                            if (conv.contextNotes.isNotEmpty()) { Spacer(Modifier.width(6.dp)); Text("\uD83D\uDCCE${conv.contextNotes.size}", color = Color(0x55FFFFFF), fontSize = 11.sp) } }
                     }
                     IconButton(onClick = { onDelete(conv.id) }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Delete, null, tint = Color(0x44FFFFFF), modifier = Modifier.size(16.dp)) }
                 }

@@ -97,7 +97,6 @@ fun ChatScreen(
         }
     ) {
         Column(Modifier.fillMaxSize().background(Deep)) {
-            // Top bar
             Row(
                 Modifier.fillMaxWidth().background(Color(0xFF060D20))
                     .padding(top = 40.dp, bottom = 8.dp, start = 8.dp, end = 8.dp),
@@ -110,13 +109,13 @@ fun ChatScreen(
                     Icon(Icons.Default.Menu, null, tint = Color.White)
                 }
                 Text(
-                    text = chatVm.currentConversation?.name ?: "AI \u5bf9\u8bdd",
+                    text = chatVm.currentConversation?.name ?: "AI Chat",
                     color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
                 if (apiKey.isBlank()) {
                     Text(
-                        text = "\u672a\u914d\u7f6e",
+                        text = "Not configured",
                         color = Color(0xFFFF6B6B), fontSize = 12.sp,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
@@ -127,7 +126,6 @@ fun ChatScreen(
                 }
             }
 
-            // Messages
             val conv = chatVm.currentConversation
             val listState = rememberLazyListState()
             val count = (conv?.messages?.size ?: 0) + (if (chatVm.isStreaming.value) 1 else 0)
@@ -152,10 +150,7 @@ fun ChatScreen(
                                     .padding(12.dp)
                             ) {
                                 Column {
-                                    Text(
-                                        "\uD83D\uDCCB \u7b14\u8bb0\u4e0a\u4e0b\u6587",
-                                        color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold
-                                    )
+                                    Text("Note Context", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     Spacer(Modifier.height(4.dp))
                                     Text(ctxNote.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     if (ctxNote.content.isNotBlank()) {
@@ -168,9 +163,7 @@ fun ChatScreen(
                     }
                     items(conv.messages) { msg -> Bubble(msg) }
                     if (chatVm.isStreaming.value) {
-                        item {
-                            StreamBubble(chatVm.streamThinking.value, chatVm.streamContent.value)
-                        }
+                        item { StreamBubble(chatVm.streamThinking.value, chatVm.streamContent.value) }
                     }
                 }
                 if (conv == null || (conv.messages.isEmpty() && !chatVm.isStreaming.value)) {
@@ -179,11 +172,11 @@ fun ChatScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("\u2728", fontSize = 40.sp)
                                 Spacer(Modifier.height(12.dp))
-                                Text("\u5f00\u59cb\u5bf9\u8bdd", color = Color(0x66FFFFFF), fontSize = 16.sp)
+                                Text("Start chatting", color = Color(0x66FFFFFF), fontSize = 16.sp)
                                 if (apiKey.isBlank()) {
                                     Spacer(Modifier.height(8.dp))
                                     Text(
-                                        "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e API",
+                                        "Configure API in settings first",
                                         color = Color(0xFFFF6B6B), fontSize = 13.sp,
                                         modifier = Modifier.clickable { onOpenSettings() }
                                     )
@@ -194,7 +187,6 @@ fun ChatScreen(
                 }
             }
 
-            // Input bar
             InputBar(
                 enabled = !chatVm.isStreaming.value && apiKey.isNotBlank(),
                 onSend = { chatVm.sendMessage(it, baseUrl, apiKey, model, enableThinking) }
@@ -219,8 +211,8 @@ private fun Bubble(msg: UiMessage) {
                     .clickable { exp = !exp }
                     .padding(10.dp)
             ) {
-                val label = if (exp) "\uD83D\uDCA1 \u601d\u8003\u8fc7\u7a0b \u25B2" else "\uD83D\uDCA1 \u601d\u8003\u8fc7\u7a0b \u25BC"
-                Text(label, color = Color(0xFF7A9FCC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                val arrow = if (exp) "\u25B2" else "\u25BC"
+                Text("Thinking $arrow", color = Color(0xFF7A9FCC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 AnimatedVisibility(exp, enter = expandVertically(), exit = shrinkVertically()) {
                     Text(
                         msg.thinking, color = Color(0x99FFFFFF), fontSize = 13.sp,
@@ -253,9 +245,10 @@ private fun StreamBubble(thinking: String, content: String) {
                     .padding(10.dp)
             ) {
                 Column {
-                    Text("\uD83D\uDCA1 \u601d\u8003\u4e2d...", color = Color(0xFF7A9FCC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Thinking...", color = Color(0xFF7A9FCC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
-                    Text(thinking, color = Color(0x99FFFFFF), fontSize = 13.sp, fontStyle = FontStyle.Italic, lineHeight = 20.sp)
+                    Text(thinking, color = Color(0x99FFFFFF), fontSize = 13.sp,
+                        fontStyle = FontStyle.Italic, lineHeight = 20.sp)
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -275,7 +268,7 @@ private fun StreamBubble(thinking: String, content: String) {
                     .background(AiBubble)
                     .padding(14.dp, 10.dp)
             ) {
-                Text("\u2588", color = Blue, fontSize = 15.sp)
+                Text("|", color = Blue, fontSize = 15.sp)
             }
         }
     }
@@ -304,7 +297,7 @@ private fun InputBar(enabled: Boolean, onSend: (String) -> Unit) {
                 cursorBrush = SolidColor(Blue),
                 modifier = Modifier.fillMaxWidth(),
                 decorationBox = { inner ->
-                    if (text.isEmpty()) Text("\u8f93\u5165\u6d88\u606f...", color = Color(0x44FFFFFF), fontSize = 15.sp)
+                    if (text.isEmpty()) Text("Type a message...", color = Color(0x44FFFFFF), fontSize = 15.sp)
                     inner()
                 }
             )
@@ -341,7 +334,7 @@ private fun DrawerContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("\u5bf9\u8bdd\u5217\u8868", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Chats", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Row {
                 IconButton(onClick = onSettings) {
                     Icon(Icons.Default.Settings, null, tint = Color(0x88FFFFFF))
@@ -375,7 +368,7 @@ private fun DrawerContent(
                             maxLines = 1
                         )
                         Text(
-                            "${c.messages.size} \u6761\u6d88\u606f",
+                            "${c.messages.size} messages",
                             color = Color(0x55FFFFFF), fontSize = 11.sp
                         )
                     }

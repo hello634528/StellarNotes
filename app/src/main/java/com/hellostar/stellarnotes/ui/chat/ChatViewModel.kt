@@ -9,7 +9,7 @@ import kotlinx.coroutines.launch
 
 data class Conversation(
     val id: Long = System.currentTimeMillis(),
-    var name: String = "\u65b0\u5bf9\u8bdd",
+    var name: String = "New Chat",
     val messages: MutableList<UiMessage> = mutableListOf(),
     var contextNote: Note? = null
 )
@@ -60,8 +60,7 @@ class ChatViewModel : ViewModel() {
         val conv = currentConversation ?: return
         if (text.isBlank()) return
         conv.messages.add(UiMessage(role = "user", content = text))
-        val defaultName = "\u65b0\u5bf9\u8bdd"
-        if (conv.messages.size == 1 && conv.name == defaultName) {
+        if (conv.messages.size == 1 && conv.name == "New Chat") {
             conv.name = text.take(20)
         }
         isStreaming.value = true

@@ -97,6 +97,8 @@ private val CardBg = Color(0xF00A1530)
 enum class AppTab { Galaxy, List, Stats }
 enum class Screen { Main, Chat, Settings }
 
+private const val STAR_EMOJI = "*"
+
 @Composable
 fun StellarApp(viewModel: StellarViewModel, appPrefs: AppPreferences, chatVm: ChatViewModel) {
     val hasSeen by appPrefs.hasSeenIntro.collectAsState(initial = true)
@@ -124,23 +126,23 @@ private fun IntroScreen(onDismiss: () -> Unit) {
     Surface(Modifier.fillMaxSize(), color = Deep) {
         Box(Modifier.fillMaxSize().clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(40.dp)) {
-                Text("\u2728", fontSize = 72.sp)
+                Text("*", fontSize = 72.sp)
                 Spacer(Modifier.height(16.dp))
-                Text("\u661f\u6f9c\u7b14\u8bb0", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-                Text("NebulaNotes", color = Blue, fontSize = 16.sp, letterSpacing = 2.sp)
+                Text("NebulaNotes", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                Text("Stellar Note-Taking", color = Blue, fontSize = 16.sp, letterSpacing = 2.sp)
                 Spacer(Modifier.height(40.dp))
-                Text("\u6bcf\u4e00\u6761\u7b14\u8bb0\uff0c\u90fd\u662f\u5b87\u5b99\u4e2d\u7684\u4e00\u9897\u661f", color = Color(0xCCFFFFFF), fontSize = 16.sp, textAlign = TextAlign.Center)
+                Text("Every note is a star in the universe", color = Color(0xCCFFFFFF), fontSize = 16.sp, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(16.dp))
                 val features = listOf(
-                    "\uD83D\uDC46  \u5355\u6307\u6ed1\u52a8\u6f2b\u6e38\u661f\u7a7a",
-                    "\uD83D\uDD0D  \u53cc\u6307\u7f29\u653e\u89c6\u89d2",
-                    "\u2b50  \u661f\u6807\u7b14\u8bb0\u53d1\u5149\u66f4\u4eae",
-                    "\uD83E\uDD16  AI \u5bf9\u8bdd\u7406\u89e3\u7b14\u8bb0"
+                    "Swipe to explore the galaxy",
+                    "Pinch to zoom in/out",
+                    "Star notes shine brighter",
+                    "AI chat understands your notes"
                 )
                 for (f in features)
                     Text(f, color = Color(0xAAFFFFFF), fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
                 Spacer(Modifier.height(48.dp))
-                Text("\u70b9\u51fb\u4efb\u610f\u4f4d\u7f6e\u8fdb\u5165", color = Color(0x77FFFFFF), fontSize = 13.sp)
+                Text("Tap anywhere to enter", color = Color(0x77FFFFFF), fontSize = 13.sp)
             }
         }
     }
@@ -251,7 +253,7 @@ private fun MainScreen(vm: StellarViewModel, onOpenChat: (Note?) -> Unit, onOpen
             if (state.notes.isEmpty() && tab == AppTab.Galaxy && !sheet) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("\u2728", fontSize = 48.sp)
+                        Text("*", fontSize = 48.sp, color = Color.White)
                         Spacer(Modifier.height(12.dp))
                         Text("Tap + to create your first star", color = Color(0x88FFFFFF), fontSize = 16.sp)
                     }
@@ -430,9 +432,9 @@ private fun StatsPage(notes: List<Note>) {
         }
         Spacer(Modifier.height(36.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            StatItem("\u2b50", "$starred", "Starred")
-            StatItem("\u270d", "$total", "Total")
-            StatItem("\uD83D\uDCC4", "$avg", "Average")
+            StatItem("*", "$starred", "Starred")
+            StatItem("W", "$total", "Total")
+            StatItem("A", "$avg", "Average")
         }
     }
 }
@@ -440,7 +442,7 @@ private fun StatsPage(notes: List<Note>) {
 @Composable
 private fun StatItem(emoji: String, v: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(emoji, fontSize = 28.sp)
+        Text(emoji, fontSize = 28.sp, color = Gold)
         Spacer(Modifier.height(6.dp))
         Text(v, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Text(label, color = Color(0x88FFFFFF), fontSize = 12.sp)

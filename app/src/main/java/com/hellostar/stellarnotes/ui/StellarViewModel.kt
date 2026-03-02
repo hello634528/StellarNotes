@@ -23,7 +23,7 @@ data class StellarUiState(
 data class SearchResult(
     val note: Note,
     val score: Double,
-    val normalizedScore: Float = 0f // For visual energy bar
+    val normalizedScore: Float = 0f
 )
 
 class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
@@ -54,7 +54,7 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
         if (title.isBlank() && content.isBlank()) return
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val finalTitle = title.ifBlank { "无标题" }
+            val finalTitle = title.ifBlank { "Untitled" }
             if (old == null) {
                 repo.upsert(
                     Note(
@@ -85,9 +85,9 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
     }
 
     private fun rankNotes(notes: List<Note>, q: String): List<SearchResult> {
-        if (q.isBlank()) return emptyList() // Hide results if query is empty
-        val tokens = q.lowercase().trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-        
+        if (q.isBlank()) return emptyList()
+        val tokens = q.lowercase().trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+
         val rawResults = notes.map { n ->
             val t = n.title.lowercase()
             val c = n.content.lowercase()
@@ -104,9 +104,8 @@ class StellarViewModel(private val repo: NoteRepository) : ViewModel() {
             SearchResult(n, score)
         }.filter { it.score > 5.0 }.sortedByDescending { it.score }
 
-        // Normalize scores for the UI energy bar (0.1 to 1.0)
         val maxScore = rawResults.maxOfOrNull { it.score } ?: 1.0
-        return rawResults.map { 
+        return rawResults.map {
             it.copy(normalizedScore = (it.score / maxScore).toFloat().coerceIn(0.1f, 1f))
         }
     }

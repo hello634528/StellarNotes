@@ -170,7 +170,7 @@ fun ChatScreen(
                     item {
                         Box(Modifier.fillMaxWidth().height(300.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("\u2728", fontSize = 40.sp)
+                                Text("*", fontSize = 40.sp, color = Color.White)
                                 Spacer(Modifier.height(12.dp))
                                 Text("Start chatting", color = Color(0x66FFFFFF), fontSize = 16.sp)
                                 if (apiKey.isBlank()) {
@@ -211,7 +211,7 @@ private fun Bubble(msg: UiMessage) {
                     .clickable { exp = !exp }
                     .padding(10.dp)
             ) {
-                val arrow = if (exp) "\u25B2" else "\u25BC"
+                val arrow = if (exp) "^" else "v"
                 Text("Thinking $arrow", color = Color(0xFF7A9FCC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 AnimatedVisibility(exp, enter = expandVertically(), exit = shrinkVertically()) {
                     Text(

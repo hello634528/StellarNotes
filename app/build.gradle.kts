@@ -13,8 +13,8 @@ android {
         applicationId = "com.hellostar.stellarnotes"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 4
+        versionName = "4.0.1"
     }
 
     buildTypes {
@@ -50,7 +50,8 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.01.00")
+    // Keep Compose stack fully aligned with compiler extension 1.5.8
+    val composeBom = platform("androidx.compose:compose-bom:2023.10.01")
     implementation(composeBom)
 
     implementation("androidx.core:core-ktx:1.12.0")

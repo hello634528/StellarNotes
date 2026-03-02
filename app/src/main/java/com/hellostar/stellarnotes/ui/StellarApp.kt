@@ -55,12 +55,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,15 +82,19 @@ private val DeepBlue = Color(0xFF040A1E)
 private val StarGold = Color(0xFFFFD86B)
 private val ActionBlue = Color(0xFF5A9DFF)
 private val CardBg = Color(0xEE0A1530)
+private val ListCardBg = Color(0xFF0D1A35)
 
 enum class AppTab { Galaxy, List, Stats }
 
 @Composable
-fun StellarApp(viewModel: StellarViewModel) {
-    var showIntro by rememberSaveable { mutableStateOf(true) }
+fun StellarApp(viewModel: StellarViewModel, appPrefs: AppPreferences) {
+    val hasSeenIntro by appPrefs.hasSeenIntro.collectAsState(initial = true)
+    val coroutineScope = rememberCoroutineScope()
 
-    if (showIntro) {
-        IntroScreen(onDismiss = { showIntro = false })
+    if (!hasSeenIntro) {
+        IntroScreen(onDismiss = {
+            coroutineScope.launch { appPrefs.setIntroSeen() }
+        })
     } else {
         MainScreen(viewModel = viewModel)
     }
@@ -107,49 +111,18 @@ private fun IntroScreen(onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(40.dp)
             ) {
-                Text(text = "✨", fontSize = 72.sp)
+                Text(text = "\u2728", fontSize = 72.sp)
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    text = "星澜笔记",
-                    color = Color.White,
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "NebulaNotes",
-                    color = ActionBlue,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Light,
-                    letterSpacing = 2.sp
-                )
+                Text("\u661f\u6f9c\u7b14\u8bb0", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                Text("NebulaNotes", color = ActionBlue, fontSize = 16.sp, fontWeight = FontWeight.Light, letterSpacing = 2.sp)
                 Spacer(Modifier.height(40.dp))
-                Text(
-                    text = "每一条笔记，都是宇宙中的一颗星",
-                    color = Color(0xCCFFFFFF),
-                    fontSize = 16.sp,
-                    textAlign = TextAlign.Center
-                )
+                Text("\u6bcf\u4e00\u6761\u7b14\u8bb0\uff0c\u90fd\u662f\u5b87\u5b99\u4e2d\u7684\u4e00\u9897\u661f", color = Color(0xCCFFFFFF), fontSize = 16.sp, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(16.dp))
-                val features = listOf(
-                    "👆  单指滑动漫游星空",
-                    "🔍  双指捏合缩放视角",
-                    "⭐  星标笔记汇聚星系中心",
-                    "📱  轻晃手机，星空随之漂移"
-                )
-                for (f in features) {
-                    Text(
-                        text = f,
-                        color = Color(0xAAFFFFFF),
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
+                for (f in listOf("\uD83D\uDC46  \u5355\u6307\u6ed1\u52a8\u6f2b\u6e38\u661f\u7a7a", "\uD83D\uDD0D  \u53cc\u6307\u634f\u5408\u7f29\u653e\u89c6\u89d2", "\u2b50  \u661f\u6807\u7b14\u8bb0\u6c47\u805a\u661f\u7cfb\u4e2d\u5fc3", "\uD83D\uDCF1  \u8f7b\u6643\u624b\u673a\uff0c\u661f\u7a7a\u968f\u4e4b\u6f02\u79fb")) {
+                    Text(f, color = Color(0xAAFFFFFF), fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
                 }
                 Spacer(Modifier.height(48.dp))
-                Text(
-                    text = "点击任意位置进入星际",
-                    color = Color(0x77FFFFFF),
-                    fontSize = 13.sp
-                )
+                Text("\u70b9\u51fb\u4efb\u610f\u4f4d\u7f6e\u8fdb\u5165\u661f\u9645", color = Color(0x77FFFFFF), fontSize = 13.sp)
             }
         }
     }
@@ -158,194 +131,105 @@ private fun IntroScreen(onDismiss: () -> Unit) {
 @Composable
 private fun MainScreen(viewModel: StellarViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    
     var currentTab by remember { mutableStateOf(AppTab.Galaxy) }
     var activeNote by remember { mutableStateOf<Note?>(null) }
     var isEditing by remember { mutableStateOf(false) }
     var showSheet by remember { mutableStateOf(false) }
     var isFullScreen by remember { mutableStateOf(false) }
-    
     val tilt = rememberTiltState()
     val cameraX = remember { Animatable(0f) }
     val cameraY = remember { Animatable(0f) }
     var cameraZoom by remember { mutableFloatStateOf(1f) }
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.focusedNoteId) {
         val noteId = state.focusedNoteId ?: return@LaunchedEffect
         val note = state.notes.firstOrNull { it.id == noteId } ?: return@LaunchedEffect
-        
         currentTab = AppTab.Galaxy
         val pos = computeStarPosition(note, state.notes)
-        coroutineScope.launch { cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }
-        coroutineScope.launch { cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }
+        scope.launch { cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }
+        scope.launch { cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }
         cameraZoom = 1.8f
-        
-        activeNote = note
-        isEditing = false
-        isFullScreen = false
-        showSheet = true
+        activeNote = note; isEditing = false; isFullScreen = false; showSheet = true
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = DeepBlue) {
         Box(modifier = Modifier.fillMaxSize()) {
-            
-            // Background Layer: StarField View
             StarFieldView(
-                notes = state.notes,
-                tilt = tilt,
-                camX = cameraX.value,
-                camY = cameraY.value,
-                camZoom = cameraZoom,
+                notes = state.notes, tilt = tilt,
+                camX = cameraX.value, camY = cameraY.value, camZoom = cameraZoom,
                 onPanZoom = { dx, dy, zoom ->
-                    coroutineScope.launch {
-                        cameraX.snapTo(cameraX.value + dx / cameraZoom)
-                        cameraY.snapTo(cameraY.value + dy / cameraZoom)
-                    }
+                    scope.launch { cameraX.snapTo(cameraX.value + dx / cameraZoom) }
+                    scope.launch { cameraY.snapTo(cameraY.value + dy / cameraZoom) }
                     cameraZoom = (cameraZoom * zoom).coerceIn(0.2f, 4.0f)
                 },
                 onResetCamera = {
-                    coroutineScope.launch { cameraX.animateTo(0f) }
-                    coroutineScope.launch { cameraY.animateTo(0f) }
+                    scope.launch { cameraX.animateTo(0f) }
+                    scope.launch { cameraY.animateTo(0f) }
                     cameraZoom = 1f
                 },
                 onTapNote = { note ->
                     if (currentTab == AppTab.Galaxy) {
                         val pos = computeStarPosition(note, state.notes)
-                        coroutineScope.launch { cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }
-                        coroutineScope.launch { cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }
+                        scope.launch { cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }
+                        scope.launch { cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }
                         cameraZoom = 1.6f
-                        
-                        activeNote = note
-                        isEditing = false
-                        isFullScreen = false
-                        showSheet = true
+                        activeNote = note; isEditing = false; isFullScreen = false; showSheet = true
                     }
                 }
             )
 
-            // Foreground Layers based on Tab
-            AnimatedVisibility(
-                visible = currentTab == AppTab.List,
-                enter = fadeIn(), exit = fadeOut()
-            ) {
-                Box(modifier = Modifier.fillMaxSize().background(Color(0xBB040A1E))) {
-                    NoteListScreen(
-                        notes = state.notes,
-                        onNoteClick = { note ->
-                            activeNote = note
-                            isEditing = false
-                            isFullScreen = false
-                            showSheet = true
-                        }
-                    )
+            AnimatedVisibility(visible = currentTab == AppTab.List, enter = fadeIn(), exit = fadeOut()) {
+                Box(modifier = Modifier.fillMaxSize().background(Color(0xDD040A1E))) {
+                    NoteListScreen(notes = state.notes, onNoteClick = { note ->
+                        activeNote = note; isEditing = false; isFullScreen = false; showSheet = true
+                    })
                 }
             }
-
-            AnimatedVisibility(
-                visible = currentTab == AppTab.Stats,
-                enter = fadeIn(), exit = fadeOut()
-            ) {
-                Box(modifier = Modifier.fillMaxSize().background(Color(0xBB040A1E))) {
-                    StatsScreen(notes = state.notes)
-                }
+            AnimatedVisibility(visible = currentTab == AppTab.Stats, enter = fadeIn(), exit = fadeOut()) {
+                Box(modifier = Modifier.fillMaxSize().background(Color(0xDD040A1E))) { StatsScreen(notes = state.notes) }
             }
 
-            // Search Bar (Only in Galaxy mode, hidden when sheet is open)
-            AnimatedVisibility(
-                visible = currentTab == AppTab.Galaxy && !showSheet,
-                enter = fadeIn(), exit = fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 48.dp)
-                ) {
-                    CustomSearchBar(
-                        query = state.query,
-                        results = state.searchResults,
+            AnimatedVisibility(visible = currentTab == AppTab.Galaxy && !showSheet, enter = fadeIn(), exit = fadeOut()) {
+                Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 48.dp)) {
+                    CustomSearchBar(query = state.query, results = state.searchResults,
                         onQueryChange = { viewModel.onQueryChange(it) },
-                        onSelect = { note -> viewModel.focusOn(note.id) }
-                    )
+                        onSelect = { note -> viewModel.focusOn(note.id) })
                 }
             }
 
-            // FAB (Hidden when sheet is open)
-            AnimatedVisibility(
-                visible = !showSheet,
-                enter = fadeIn(), exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 100.dp, end = 24.dp)
-            ) {
-                FloatingActionButton(
-                    onClick = {
-                        activeNote = null
-                        isEditing = true
-                        isFullScreen = false
-                        showSheet = true
-                    },
-                    containerColor = ActionBlue,
-                    contentColor = Color.White
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "New")
+            AnimatedVisibility(visible = !showSheet, enter = fadeIn(), exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 100.dp, end = 24.dp)) {
+                FloatingActionButton(onClick = { activeNote = null; isEditing = true; isFullScreen = false; showSheet = true },
+                    containerColor = ActionBlue, contentColor = Color.White) {
+                    Icon(Icons.Default.Add, contentDescription = null)
                 }
             }
 
-            // Bottom Navigation Dock
-            AnimatedVisibility(
-                visible = !showSheet,
-                enter = slideInVertically { it } + fadeIn(),
+            AnimatedVisibility(visible = !showSheet, enter = slideInVertically { it } + fadeIn(),
                 exit = slideOutVertically { it } + fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
-            ) {
-                BottomDock(
-                    currentTab = currentTab,
-                    onTabSelected = { currentTab = it }
-                )
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)) {
+                BottomDock(currentTab = currentTab, onTabSelected = { currentTab = it })
             }
 
-            // Bottom Sheet (Reader or Editor)
-            AnimatedVisibility(
-                visible = showSheet,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            AnimatedVisibility(visible = showSheet, enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
-            ) {
-                val heightModifier = if (isFullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(420.dp)
+                modifier = Modifier.align(Alignment.BottomCenter)) {
+                val hm = if (isFullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(420.dp)
                 val shape = if (isFullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-
-                Card(
-                    modifier = heightModifier.animateContentSize(),
-                    shape = shape,
-                    colors = CardDefaults.cardColors(containerColor = CardBg)
-                ) {
+                Card(modifier = hm.animateContentSize(), shape = shape, colors = CardDefaults.cardColors(containerColor = CardBg)) {
                     if (isEditing) {
-                        NoteEditorContent(
-                            note = activeNote,
-                            isFullScreen = isFullScreen,
+                        NoteEditorContent(note = activeNote, isFullScreen = isFullScreen,
                             onToggleFullScreen = { isFullScreen = !isFullScreen },
                             onDismiss = { showSheet = false },
-                            onSave = { old, title, content, starred ->
-                                viewModel.addOrUpdate(old, title, content, starred)
-                                showSheet = false
-                            },
+                            onSave = { old, t, c, s -> viewModel.addOrUpdate(old, t, c, s); showSheet = false },
                             onToggleStar = { viewModel.toggleStar(it) },
-                            onDelete = {
-                                viewModel.deleteNote(it)
-                                showSheet = false
-                            }
-                        )
+                            onDelete = { viewModel.deleteNote(it); showSheet = false })
                     } else {
-                        NoteReaderContent(
-                            note = activeNote!!,
-                            isFullScreen = isFullScreen,
+                        NoteReaderContent(note = activeNote!!, isFullScreen = isFullScreen,
                             onToggleFullScreen = { isFullScreen = !isFullScreen },
-                            onDismiss = { showSheet = false },
-                            onEdit = { isEditing = true },
-                            onToggleStar = { 
-                                viewModel.toggleStar(it)
-                                activeNote = it.copy(starred = !it.starred) 
-                            }
-                        )
+                            onDismiss = { showSheet = false }, onEdit = { isEditing = true },
+                            onToggleStar = { viewModel.toggleStar(it); activeNote = it.copy(starred = !it.starred) })
                     }
                 }
             }
@@ -354,84 +238,27 @@ private fun MainScreen(viewModel: StellarViewModel) {
 }
 
 @Composable
-private fun CustomSearchBar(
-    query: String,
-    results: List<SearchResult>,
-    onQueryChange: (String) -> Unit,
-    onSelect: (Note) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0x66020815)) // Deep dark transparent
-            .border(1.dp, Color(0x335A9DFF), RoundedCornerShape(20.dp))
-            .padding(16.dp)
-    ) {
-        BasicTextField(
-            value = query,
-            onValueChange = onQueryChange,
+private fun CustomSearchBar(query: String, results: List<SearchResult>, onQueryChange: (String) -> Unit, onSelect: (Note) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+        .background(Color(0x66020815)).border(1.dp, Color(0x225A9DFF), RoundedCornerShape(20.dp)).padding(16.dp)) {
+        BasicTextField(value = query, onValueChange = onQueryChange,
             textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
-            cursorBrush = SolidColor(ActionBlue),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            decorationBox = { innerTextField ->
-                if (query.isEmpty()) {
-                    Text("搜索星群笔记...", color = Color(0x66FFFFFF), fontSize = 16.sp)
-                }
-                innerTextField()
-            }
-        )
-        
+            cursorBrush = SolidColor(ActionBlue), singleLine = true, modifier = Modifier.fillMaxWidth(),
+            decorationBox = { inner -> if (query.isEmpty()) Text("\u641c\u7d22\u661f\u7fa4\u7b14\u8bb0...", color = Color(0x55FFFFFF), fontSize = 16.sp); inner() })
         if (query.isNotBlank() && results.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             LazyColumn(modifier = Modifier.height(200.dp)) {
                 items(results.take(6), key = { it.note.id }) { r ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onSelect(r.note) }
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (r.note.starred) {
-                            Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(8.dp))
-                        }
+                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelect(r.note) }.padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        if (r.note.starred) { Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)) }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = r.note.title,
-                                color = if (r.note.starred) StarGold else Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontSize = 15.sp
-                            )
-                            if (r.note.content.isNotBlank()) {
-                                Text(
-                                    text = r.note.content.replace('\n', ' '),
-                                    color = Color(0x88FFFFFF),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontSize = 12.sp
-                                )
-                            }
+                            Text(r.note.title, color = if (r.note.starred) StarGold else Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 15.sp)
+                            if (r.note.content.isNotBlank()) Text(r.note.content.replace('\n', ' '), color = Color(0x88FFFFFF), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
                         }
                         Spacer(Modifier.width(12.dp))
-                        Box(
-                            modifier = Modifier
-                                .width(40.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(Color(0x33FFFFFF))
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(r.normalizedScore)
-                                    .height(4.dp)
-                                    .background(Brush.horizontalGradient(listOf(Color(0xFF3B82F6), Color(0xFF06B6D4))))
-                            )
+                        Box(modifier = Modifier.width(40.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x22FFFFFF))) {
+                            Box(modifier = Modifier.fillMaxWidth(r.normalizedScore).height(4.dp).background(Brush.horizontalGradient(listOf(Color(0xFF3B82F6), Color(0xFF06B6D4)))))
                         }
                     }
                 }
@@ -442,94 +269,42 @@ private fun CustomSearchBar(
 
 @Composable
 private fun BottomDock(currentTab: AppTab, onTabSelected: (AppTab) -> Unit) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xCC040A1E))
-            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(24.dp))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        DockItem(
-            icon = Icons.Default.Explore,
-            label = "星空",
-            isSelected = currentTab == AppTab.Galaxy,
-            onClick = { onTabSelected(AppTab.Galaxy) }
-        )
-        DockItem(
-            icon = Icons.Default.FormatListBulleted,
-            label = "列表",
-            isSelected = currentTab == AppTab.List,
-            onClick = { onTabSelected(AppTab.List) }
-        )
-        DockItem(
-            icon = Icons.Default.Info,
-            label = "档案",
-            isSelected = currentTab == AppTab.Stats,
-            onClick = { onTabSelected(AppTab.Stats) }
-        )
+    Row(modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(Color(0xCC040A1E))
+        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        DockItem(Icons.Default.Explore, "\u661f\u7a7a", currentTab == AppTab.Galaxy) { onTabSelected(AppTab.Galaxy) }
+        DockItem(Icons.Default.FormatListBulleted, "\u5217\u8868", currentTab == AppTab.List) { onTabSelected(AppTab.List) }
+        DockItem(Icons.Default.Info, "\u6863\u6848", currentTab == AppTab.Stats) { onTabSelected(AppTab.Stats) }
     }
 }
 
 @Composable
 private fun DockItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, isSelected: Boolean, onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick).padding(4.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (isSelected) ActionBlue else Color(0x88FFFFFF),
-            modifier = Modifier.size(24.dp)
-        )
-        Text(
-            text = label,
-            color = if (isSelected) ActionBlue else Color(0x88FFFFFF),
-            fontSize = 10.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-        )
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick).padding(4.dp)) {
+        Icon(icon, label, tint = if (isSelected) ActionBlue else Color(0x88FFFFFF), modifier = Modifier.size(24.dp))
+        Text(label, color = if (isSelected) ActionBlue else Color(0x88FFFFFF), fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
     }
 }
 
 @Composable
 private fun NoteListScreen(notes: List<Note>, onNoteClick: (Note) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(top = 48.dp, start = 16.dp, end = 16.dp)) {
-        Text("所有笔记", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text("\u6240\u6709\u7b14\u8bb0", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
-        LazyColumn(
-            contentPadding = PaddingValues(bottom = 120.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        LazyColumn(contentPadding = PaddingValues(bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(notes.sortedByDescending { it.updatedAt }, key = { it.id }) { note ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { onNoteClick(note) },
-                    colors = CardDefaults.cardColors(containerColor = Color(0x44FFFFFF)),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                Card(modifier = Modifier.fillMaxWidth().clickable { onNoteClick(note) },
+                    colors = CardDefaults.cardColors(containerColor = ListCardBg),
+                    shape = RoundedCornerShape(16.dp)) {
+                    Column(modifier = Modifier.padding(16.dp).border(1.dp, Color(0x11FFFFFF), RoundedCornerShape(16.dp)).padding(0.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (note.starred) {
-                                Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                            }
-                            Text(
-                                text = note.title,
-                                color = Color.White,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            if (note.starred) { Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)) }
+                            Text(note.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = note.content.ifBlank { "无内容" },
-                            color = Color(0xAAFFFFFF),
-                            fontSize = 14.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Text(note.content.ifBlank { "\u65e0\u5185\u5bb9" }, color = Color(0x88FFFFFF), fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.height(6.dp))
+                        Text(java.text.SimpleDateFormat("MM/dd HH:mm").format(java.util.Date(note.updatedAt)), color = Color(0x55FFFFFF), fontSize = 11.sp)
                     }
                 }
             }
@@ -539,202 +314,85 @@ private fun NoteListScreen(notes: List<Note>, onNoteClick: (Note) -> Unit) {
 
 @Composable
 private fun StatsScreen(notes: List<Note>) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(top = 48.dp, start = 24.dp, end = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("星际档案", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+    Column(modifier = Modifier.fillMaxSize().padding(top = 48.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("\u661f\u9645\u6863\u6848", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(40.dp))
-        
-        Box(modifier = Modifier.size(160.dp).clip(CircleShape).background(Color(0x225A9DFF)), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(160.dp).clip(CircleShape).background(Color(0x115A9DFF)).border(1.dp, Color(0x225A9DFF), CircleShape), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("${notes.size}", color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold)
-                Text("宇宙星辰", color = ActionBlue, fontSize = 14.sp)
+                Text("\u5b87\u5b99\u661f\u8fb0", color = ActionBlue, fontSize = 14.sp)
             }
         }
-        
         Spacer(Modifier.height(40.dp))
-        
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.height(8.dp))
                 Text("${notes.count { it.starred }}", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Text("金色星标", color = Color(0xAAFFFFFF), fontSize = 12.sp)
+                Text("\u91d1\u8272\u661f\u6807", color = Color(0xAAFFFFFF), fontSize = 12.sp)
             }
         }
     }
 }
 
 @Composable
-private fun NoteReaderContent(
-    note: Note,
-    isFullScreen: Boolean,
-    onToggleFullScreen: () -> Unit,
-    onDismiss: () -> Unit,
-    onEdit: () -> Unit,
-    onToggleStar: (Note) -> Unit
-) {
+private fun NoteReaderContent(note: Note, isFullScreen: Boolean, onToggleFullScreen: () -> Unit, onDismiss: () -> Unit, onEdit: () -> Unit, onToggleStar: (Note) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = note.title,
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text(note.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date(note.createdAt)),
-                    color = Color(0x66FFFFFF),
-                    fontSize = 12.sp
-                )
+                Text(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date(note.createdAt)), color = Color(0x66FFFFFF), fontSize = 12.sp)
             }
-            
-            IconButton(onClick = { onToggleStar(note) }) {
-                Icon(
-                    imageVector = Icons.Filled.Star,
-                    contentDescription = "Star",
-                    tint = if (note.starred) StarGold else Color(0x44FFFFFF)
-                )
-            }
-            IconButton(onClick = onToggleFullScreen) {
-                Icon(
-                    imageVector = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                    contentDescription = "Fullscreen",
-                    tint = Color.White
-                )
-            }
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, "Close", tint = Color.White)
-            }
+            IconButton(onClick = { onToggleStar(note) }) { Icon(Icons.Filled.Star, null, tint = if (note.starred) StarGold else Color(0x44FFFFFF)) }
+            IconButton(onClick = onToggleFullScreen) { Icon(if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, null, tint = Color.White) }
+            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, null, tint = Color.White) }
         }
-
         Spacer(Modifier.height(20.dp))
-        
         val scrollState = rememberScrollState()
-        Text(
-            text = note.content.ifBlank { "开始写下你的星际灵感..." },
-            color = Color(0xDDFFFFFF),
-            fontSize = 16.sp,
-            lineHeight = 26.sp,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(scrollState)
-        )
-        
+        Text(note.content.ifBlank { "\u5f00\u59cb\u5199\u4e0b\u4f60\u7684\u661f\u9645\u7075\u611f..." }, color = Color(0xDDFFFFFF), fontSize = 16.sp, lineHeight = 26.sp,
+            modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState))
         Spacer(Modifier.height(16.dp))
-        
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            FloatingActionButton(
-                onClick = onEdit,
-                containerColor = ActionBlue,
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit")
-            }
+            FloatingActionButton(onClick = onEdit, containerColor = ActionBlue, contentColor = Color.White) { Icon(Icons.Default.Edit, null) }
         }
     }
 }
 
 @Composable
-private fun NoteEditorContent(
-    note: Note?,
-    isFullScreen: Boolean,
-    onToggleFullScreen: () -> Unit,
-    onDismiss: () -> Unit,
-    onSave: (Note?, String, String, Boolean) -> Unit,
-    onToggleStar: (Note) -> Unit,
-    onDelete: (Note) -> Unit
-) {
+private fun NoteEditorContent(note: Note?, isFullScreen: Boolean, onToggleFullScreen: () -> Unit, onDismiss: () -> Unit,
+    onSave: (Note?, String, String, Boolean) -> Unit, onToggleStar: (Note) -> Unit, onDelete: (Note) -> Unit) {
     var title by remember(note?.id) { mutableStateOf(note?.title.orEmpty()) }
     var content by remember(note?.id) { mutableStateOf(note?.content.orEmpty()) }
-
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = if (note == null) "创造新星" else "重塑星体",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
+            Text(if (note == null) "\u521b\u9020\u65b0\u661f" else "\u91cd\u5851\u661f\u4f53", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (note != null) {
-                IconButton(onClick = { onToggleStar(note) }) {
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = "Star",
-                        tint = if (note.starred) StarGold else Color(0x44FFFFFF)
-                    )
-                }
-                IconButton(onClick = { onDelete(note) }) {
-                    Icon(Icons.Default.Delete, "Delete", tint = Color(0xFFFF6B6B))
-                }
+                IconButton(onClick = { onToggleStar(note) }) { Icon(Icons.Filled.Star, null, tint = if (note.starred) StarGold else Color(0x44FFFFFF)) }
+                IconButton(onClick = { onDelete(note) }) { Icon(Icons.Default.Delete, null, tint = Color(0xFFFF6B6B)) }
             }
-            IconButton(onClick = onToggleFullScreen) {
-                Icon(
-                    imageVector = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                    contentDescription = "Fullscreen",
-                    tint = Color.White
-                )
-            }
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, "Close", tint = Color.White)
-            }
+            IconButton(onClick = onToggleFullScreen) { Icon(if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, null, tint = Color.White) }
+            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, null, tint = Color.White) }
         }
-
         Spacer(Modifier.height(12.dp))
-
-        // Custom BasicTextField for seamless input
-        Box(modifier = Modifier.fillMaxWidth().background(Color(0x11FFFFFF), RoundedCornerShape(12.dp)).padding(12.dp)) {
-            BasicTextField(
-                value = title,
-                onValueChange = { title = it },
-                textStyle = TextStyle(color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold),
-                cursorBrush = SolidColor(ActionBlue),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                decorationBox = { inner ->
-                    if (title.isEmpty()) Text("输入标题...", color = Color(0x55FFFFFF), fontSize = 20.sp)
-                    inner()
-                }
-            )
+        Box(modifier = Modifier.fillMaxWidth().background(Color(0x0AFFFFFF), RoundedCornerShape(12.dp)).padding(12.dp)) {
+            BasicTextField(value = title, onValueChange = { title = it }, textStyle = TextStyle(color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                cursorBrush = SolidColor(ActionBlue), singleLine = true, modifier = Modifier.fillMaxWidth(),
+                decorationBox = { inner -> if (title.isEmpty()) Text("\u8f93\u5165\u6807\u9898...", color = Color(0x44FFFFFF), fontSize = 20.sp); inner() })
         }
-
         Spacer(Modifier.height(12.dp))
-
-        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0x11FFFFFF), RoundedCornerShape(12.dp)).padding(12.dp)) {
-            BasicTextField(
-                value = content,
-                onValueChange = { content = it },
-                textStyle = TextStyle(color = Color.White, fontSize = 16.sp, lineHeight = 24.sp),
-                cursorBrush = SolidColor(ActionBlue),
-                modifier = Modifier.fillMaxSize(),
-                decorationBox = { inner ->
-                    if (content.isEmpty()) Text("记录下此刻的灵感...", color = Color(0x55FFFFFF), fontSize = 16.sp)
-                    inner()
-                }
-            )
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0x0AFFFFFF), RoundedCornerShape(12.dp)).padding(12.dp)) {
+            BasicTextField(value = content, onValueChange = { content = it }, textStyle = TextStyle(color = Color.White, fontSize = 16.sp, lineHeight = 24.sp),
+                cursorBrush = SolidColor(ActionBlue), modifier = Modifier.fillMaxSize(),
+                decorationBox = { inner -> if (content.isEmpty()) Text("\u8bb0\u5f55\u4e0b\u6b64\u523b\u7684\u7075\u611f...", color = Color(0x44FFFFFF), fontSize = 16.sp); inner() })
         }
-
         Spacer(Modifier.height(16.dp))
-
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onDismiss) {
-                Text("丢弃", color = Color(0x88FFFFFF))
-            }
+            TextButton(onClick = onDismiss) { Text("\u4e22\u5f03", color = Color(0x88FFFFFF)) }
             Spacer(Modifier.width(16.dp))
-            Button(
-                onClick = {
-                    onSave(note, title, content, note?.starred ?: false)
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = ActionBlue),
-                modifier = Modifier.width(120.dp).height(48.dp),
-                shape = RoundedCornerShape(24.dp)
-            ) {
-                Text("注入宇宙", fontWeight = FontWeight.Bold)
+            Button(onClick = { onSave(note, title, content, note?.starred ?: false) }, colors = ButtonDefaults.buttonColors(containerColor = ActionBlue),
+                modifier = Modifier.width(120.dp).height(48.dp), shape = RoundedCornerShape(24.dp)) {
+                Text("\u6ce8\u5165\u5b87\u5b99", fontWeight = FontWeight.Bold)
             }
         }
     }

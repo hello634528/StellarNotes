@@ -63,12 +63,14 @@ class ChatApiClient {
             }
 
             client.newCall(request).execute().use { response ->
+                val rb = response.body
+
                 if (!response.isSuccessful) {
-                    val err = response.body?.string()?.take(260) ?: ""
+                    val err = rb?.let { readBodyLimited(it, 64 * 1024) }?.take(260) ?: ""
                     return@withContext Result.failure(Exception("HTTP ${response.code} $err"))
                 }
 
-                val rb = response.body ?: return@withContext Result.failure(Exception("空响应"))
+                if (rb == null) return@withContext Result.failure(Exception("空响应"))
                 val len = rb.contentLength()
                 if (len > 2_000_000) return@withContext Result.failure(Exception("响应过大，无法解析模型列表"))
 

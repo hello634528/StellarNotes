@@ -10,11 +10,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -59,6 +61,9 @@ fun StarFieldView(
     tilt: Tilt,
     camX: Float,
     camY: Float,
+    camZoom: Float,
+    onPanZoom: (dx: Float, dy: Float, zoom: Float) -> Unit,
+    onResetCamera: () -> Unit,
     onTapNote: (Note) -> Unit
 ) {
     val bgStars = remember {
@@ -101,7 +106,6 @@ fun StarFieldView(
     val labelPaint = remember {
         NativePaint().apply {
             isAntiAlias = true
-            textSize = 28f
             setShadowLayer(4f, 0f, 0f, android.graphics.Color.BLACK)
         }
     }
@@ -116,34 +120,49 @@ fun StarFieldView(
         )
     )
 
+    // Capture latest state for pointer input without restarting the gesture
+    val currentCamX by rememberUpdatedState(camX)
+    val currentCamY by rememberUpdatedState(camY)
+    val currentCamZoom by rememberUpdatedState(camZoom)
+    val currentTilt by rememberUpdatedState(tilt)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(bg)
-            .pointerInput(notes, camX, camY, tilt) {
-                detectTapGestures { tap ->
-                    val cx = size.width / 2f
-                    val cy = size.height / 2f
-                    val tx = tilt.x * 80f
-                    val ty = tilt.y * 80f
-                    var best: Note? = null
-                    var bestD = Float.MAX_VALUE
-                    for (n in notes) {
-                        val p = computeStarPosition(n, notes)
-                        val dep = 1f / (1f + p.z.absoluteValue / 220f)
-                        val sx = cx + (p.x + camX + tx) * dep
-                        val sy = cy + (p.y + camY + ty) * dep
-                        val r = (if (n.pinned) 12f else 7f) * dep * (if (n.starred) 1.3f else 1f)
-                        val hit = (r * 5f).coerceAtLeast(40f)
-                        val dx = tap.x - sx
-                        val dy = tap.y - sy
-                        val dist = sqrt(dx * dx + dy * dy)
-                        if (dist < hit && dist < bestD) {
-                            bestD = dist
-                            best = n
+            .pointerInput(notes) { // Only restart if notes list changes
+                detectTapGestures(
+                    onDoubleTap = { onResetCamera() },
+                    onTap = { tap ->
+                        val cx = size.width / 2f
+                        val cy = size.height / 2f
+                        val tx = currentTilt.x * 80f
+                        val ty = currentTilt.y * 80f
+                        var best: Note? = null
+                        var bestD = Float.MAX_VALUE
+                        for (n in notes) {
+                            val p = computeStarPosition(n, notes)
+                            val dep = 1f / (1f + p.z.absoluteValue / 220f)
+                            val sx = cx + (p.x + currentCamX + tx) * dep * currentCamZoom
+                            val sy = cy + (p.y + currentCamY + ty) * dep * currentCamZoom
+                            val r = (if (n.pinned) 12f else 7f) * dep * (if (n.starred) 1.3f else 1f) * currentCamZoom
+                            // Generous touch target (at least 80px radius)
+                            val hitRadius = (r * 4f).coerceAtLeast(80f)
+                            val dx = tap.x - sx
+                            val dy = tap.y - sy
+                            val dist = sqrt(dx * dx + dy * dy)
+                            if (dist < hitRadius && dist < bestD) {
+                                bestD = dist
+                                best = n
+                            }
                         }
+                        best?.let(onTapNote)
                     }
-                    best?.let(onTapNote)
+                )
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    onPanZoom(pan.x, pan.y, zoom)
                 }
             }
     ) {
@@ -155,11 +174,13 @@ fun StarFieldView(
             val tx = tilt.x * 80f
             val ty = tilt.y * 80f
 
-            // ===== Layer 1: Background twinkling stars =====
+            // ===== Layer 1: Background twinkling stars (with parallax) =====
             for (s in bgStars) {
-                val px = when (s.layer) { 0 -> 0.04f; 1 -> 0.12f; else -> 0.25f }
-                val bx = ((s.x * w + tx * px * 25f + camX * px * 0.3f) % w + w) % w
-                val by = ((s.y * h + ty * px * 25f + camY * px * 0.3f) % h + h) % h
+                val px = when (s.layer) { 0 -> 0.05f; 1 -> 0.15f; else -> 0.3f }
+                val vx = s.x * w + (camX * px + tx * px) * camZoom
+                val vy = s.y * h + (camY * px + ty * px) * camZoom
+                val bx = (vx % w + w) % w
+                val by = (vy % h + h) % h
                 val twinkle = sin(time * s.speed + s.phase) * 0.5f + 0.5f
                 val a = s.baseAlpha * (0.25f + twinkle * 0.75f)
                 val c = when (s.layer) {
@@ -167,22 +188,26 @@ fun StarFieldView(
                     1 -> Color(0xFFBBCCEE)
                     else -> Color(0xFFDDE8FF)
                 }
-                if (s.size > 1.5f) {
-                    drawCircle(c.copy(alpha = a * 0.1f), s.size * 4f, Offset(bx, by))
-                    drawCircle(c.copy(alpha = a * 0.25f), s.size * 2f, Offset(bx, by))
+                val r = s.size * (0.8f + camZoom * 0.2f) // Slight zoom effect on bg
+                if (r > 1.5f) {
+                    drawCircle(c.copy(alpha = a * 0.1f), r * 4f, Offset(bx, by))
+                    drawCircle(c.copy(alpha = a * 0.25f), r * 2f, Offset(bx, by))
                 }
-                drawCircle(c.copy(alpha = a), s.size, Offset(bx, by))
+                drawCircle(c.copy(alpha = a), r, Offset(bx, by))
             }
 
-            // ===== Layer 2: Nebula glow patches =====
-            drawCircle(Color(0xFF1A2B6B).copy(alpha = 0.06f), 240f,
-                Offset(w * 0.2f + tx * 6f, h * 0.15f + ty * 6f))
-            drawCircle(Color(0xFF2B1A5B).copy(alpha = 0.05f), 200f,
-                Offset(w * 0.78f + tx * 4f, h * 0.5f + ty * 4f))
-            drawCircle(Color(0xFF0A2A5A).copy(alpha = 0.06f), 280f,
-                Offset(w * 0.45f + tx * 5f, h * 0.82f + ty * 5f))
-            drawCircle(Color(0xFF3A1A4B).copy(alpha = 0.04f), 160f,
-                Offset(w * 0.65f + tx * 3f, h * 0.2f + ty * 3f))
+            // ===== Layer 2: Nebula glow patches (with parallax) =====
+            val n1x = cx + (w * 0.2f - cx + camX * 0.2f + tx * 6f) * camZoom
+            val n1y = cy + (h * 0.15f - cy + camY * 0.2f + ty * 6f) * camZoom
+            drawCircle(Color(0xFF1A2B6B).copy(alpha = 0.06f), 240f * camZoom, Offset(n1x, n1y))
+
+            val n2x = cx + (w * 0.78f - cx + camX * 0.2f + tx * 4f) * camZoom
+            val n2y = cy + (h * 0.5f - cy + camY * 0.2f + ty * 4f) * camZoom
+            drawCircle(Color(0xFF2B1A5B).copy(alpha = 0.05f), 200f * camZoom, Offset(n2x, n2y))
+
+            val n3x = cx + (w * 0.45f - cx + camX * 0.2f + tx * 5f) * camZoom
+            val n3y = cy + (h * 0.82f - cy + camY * 0.2f + ty * 5f) * camZoom
+            drawCircle(Color(0xFF0A2A5A).copy(alpha = 0.06f), 280f * camZoom, Offset(n3x, n3y))
 
             // ===== Layer 3: Shooting star =====
             if (shootT < 0.2f) {
@@ -201,33 +226,19 @@ fun StarFieldView(
                     Offset(tailX, tailY), Offset(curX, curY), 2f)
                 drawCircle(Color.White.copy(alpha = alpha), 2.5f, Offset(curX, curY))
             }
-            // Second shooting star (different timing/direction)
-            val s2 = (shootT + 0.55f) % 1f
-            if (s2 < 0.15f) {
-                val t = s2 / 0.15f
-                val sx2 = w * 0.15f; val sy2 = h * 0.12f
-                val ex2 = w * 0.55f; val ey2 = h * 0.45f
-                val curX2 = sx2 + (ex2 - sx2) * t
-                val curY2 = sy2 + (ey2 - sy2) * t
-                val d2x = ex2 - sx2; val d2y = ey2 - sy2
-                val l2 = sqrt(d2x * d2x + d2y * d2y)
-                val tX2 = curX2 - d2x / l2 * 70f
-                val tY2 = curY2 - d2y / l2 * 70f
-                val a2 = (1f - t) * 0.6f
-                drawLine(Color(0xFFCCDDFF).copy(alpha = a2 * 0.3f),
-                    Offset(tX2, tY2), Offset(curX2, curY2), 1.5f)
-                drawCircle(Color(0xFFCCDDFF).copy(alpha = a2), 2f, Offset(curX2, curY2))
-            }
 
             // ===== Layer 4: Note stars =====
             for (note in notes) {
                 val pos = computeStarPosition(note, notes)
                 val depth = 1f / (1f + pos.z.absoluteValue / 220f)
-                val sx = cx + (pos.x + camX + tx) * depth
-                val sy = cy + (pos.y + camY + ty) * depth
+                val sx = cx + (pos.x + camX + tx) * depth * camZoom
+                val sy = cy + (pos.y + camY + ty) * depth * camZoom
                 val baseR = if (note.pinned) 13f else 8f
                 val mul = if (note.starred) 1.35f else 1f
-                val r = baseR * depth * mul
+                val r = baseR * depth * mul * camZoom
+
+                // Don't draw if completely off-screen (optimization)
+                if (sx < -100 || sx > w + 100 || sy < -100 || sy > h + 100) continue
 
                 val col = when {
                     note.starred -> Color(0xFFFFD86B)
@@ -253,30 +264,30 @@ fun StarFieldView(
                 // Cross rays for starred notes
                 if (note.starred) {
                     val rl = r * 4f
-                    drawLine(col.copy(alpha = 0.15f), Offset(sx - rl, sy), Offset(sx + rl, sy), 1f)
-                    drawLine(col.copy(alpha = 0.15f), Offset(sx, sy - rl), Offset(sx, sy + rl), 1f)
+                    drawLine(col.copy(alpha = 0.15f), Offset(sx - rl, sy), Offset(sx + rl, sy), 1f * camZoom)
+                    drawLine(col.copy(alpha = 0.15f), Offset(sx, sy - rl), Offset(sx, sy + rl), 1f * camZoom)
                     val d45 = rl * 0.7f
-                    drawLine(col.copy(alpha = 0.08f), Offset(sx - d45, sy - d45), Offset(sx + d45, sy + d45), 0.8f)
-                    drawLine(col.copy(alpha = 0.08f), Offset(sx + d45, sy - d45), Offset(sx - d45, sy + d45), 0.8f)
+                    drawLine(col.copy(alpha = 0.08f), Offset(sx - d45, sy - d45), Offset(sx + d45, sy + d45), 0.8f * camZoom)
+                    drawLine(col.copy(alpha = 0.08f), Offset(sx + d45, sy - d45), Offset(sx - d45, sy + d45), 0.8f * camZoom)
                 }
 
                 // Pin indicator ring
                 if (note.pinned && !note.starred) {
                     drawCircle(col.copy(alpha = 0.25f), r * 2f, Offset(sx, sy),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f))
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f * camZoom))
                 }
 
                 // Title label
                 val title = note.title.take(6)
-                val la = (depth * 220).toInt().coerceIn(50, 210)
+                val la = (depth * 255).toInt().coerceIn(50, 255)
                 labelPaint.color = when {
                     note.starred -> android.graphics.Color.argb(la, 255, 216, 107)
                     note.pinned -> android.graphics.Color.argb(la, 159, 212, 255)
                     else -> android.graphics.Color.argb(la, 190, 210, 240)
                 }
-                labelPaint.textSize = (22f * depth).coerceIn(10f, 22f)
+                labelPaint.textSize = (22f * depth * camZoom).coerceIn(10f, 40f)
                 drawContext.canvas.nativeCanvas.drawText(
-                    title, sx + r + 8f, sy + labelPaint.textSize * 0.35f, labelPaint
+                    title, sx + r + 8f * camZoom, sy + labelPaint.textSize * 0.35f, labelPaint
                 )
             }
         }

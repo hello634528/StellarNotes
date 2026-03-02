@@ -45,7 +45,10 @@ class ChatApiClient {
                     return@withContext Result.failure(Exception("HTTP ${response.code} $err"))
                 }
 
-                val body = response.body?.string().orEmpty()
+                val rb = response.body ?: return@withContext Result.failure(Exception("空响应"))
+                val len = rb.contentLength()
+                if (len > 2_000_000) return@withContext Result.failure(Exception("响应过大，无法解析模型列表"))
+                val body = rb.string().take(2_000_000)
                 if (body.isBlank()) return@withContext Result.failure(Exception("空响应"))
 
                 // 只提取 id，限制数量和长度，避免设置页渲染过重

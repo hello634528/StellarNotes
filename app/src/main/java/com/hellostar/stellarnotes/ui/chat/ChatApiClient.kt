@@ -88,8 +88,8 @@ class ChatApiClient {
                         ?.let(models::add)
                 }
 
-                // 保护 UI：限制最大数量
-                val cleaned = models.toList().sorted().take(40)
+                // 保留较大上限，支持 130+ 模型提供商
+                val cleaned = models.toList().sorted().take(500)
                 return@withContext if (cleaned.isEmpty()) {
                     Result.failure(Exception("未解析到任何模型"))
                 } else {

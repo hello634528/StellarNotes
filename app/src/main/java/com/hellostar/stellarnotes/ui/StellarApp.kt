@@ -106,10 +106,12 @@ fun StellarApp(viewModel: StellarViewModel, appPrefs: AppPreferences, chatVm: Ch
     val apiKey by appPrefs.apiKey.collectAsState(initial = "")
     val modelName by appPrefs.modelName.collectAsState(initial = "")
     val enableThinking by appPrefs.enableThinking.collectAsState(initial = true)
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
     if (!hasSeen) { IntroScreen { scope.launch { appPrefs.setIntroSeen() } } }
     else when (screen) {
-        Screen.Main -> MainScreen(viewModel, onOpenChat = { note -> if (note != null) chatVm.newConversation(note); screen = Screen.Chat }, onOpenSettings = { screen = Screen.Settings })
-        Screen.Chat -> ChatScreen(chatVm, emptyList(), apiBaseUrl, apiKey, modelName, enableThinking, onOpenSettings = { screen = Screen.Settings }, onBack = { screen = Screen.Main })
+        Screen.Main -> MainScreen(viewModel, uiState, onOpenChat = { note -> if (note != null) chatVm.newConversation(note) else chatVm.newConversation(); screen = Screen.Chat }, onOpenSettings = { screen = Screen.Settings })
+        Screen.Chat -> ChatScreen(chatVm, uiState.notes, apiBaseUrl, apiKey, modelName, enableThinking, onOpenSettings = { screen = Screen.Settings }, onBack = { screen = Screen.Main })
         Screen.Settings -> SettingsScreen(appPrefs) { screen = Screen.Main }
     }
 }
@@ -156,8 +158,8 @@ private fun SettingsScreen(appPrefs: AppPreferences, onBack: () -> Unit) {
 }
 
 @Composable
-private fun MainScreen(vm: StellarViewModel, onOpenChat: (Note?) -> Unit, onOpenSettings: () -> Unit) {
-    val state by vm.uiState.collectAsStateWithLifecycle(); var tab by remember { mutableStateOf(AppTab.Galaxy) }; var activeNote by remember { mutableStateOf<Note?>(null) }; var editing by remember { mutableStateOf(false) }; var sheet by remember { mutableStateOf(false) }; var full by remember { mutableStateOf(false) }
+private fun MainScreen(vm: StellarViewModel, state: StellarUiState, onOpenChat: (Note?) -> Unit, onOpenSettings: () -> Unit) {
+    var tab by remember { mutableStateOf(AppTab.Galaxy) }; var activeNote by remember { mutableStateOf<Note?>(null) }; var editing by remember { mutableStateOf(false) }; var sheet by remember { mutableStateOf(false) }; var full by remember { mutableStateOf(false) }
     val tilt = rememberTiltState(); val camX = remember { Animatable(0f) }; val camY = remember { Animatable(0f) }; var zoom by remember { mutableFloatStateOf(1f) }; val scope = rememberCoroutineScope()
     val focusNote: (Note) -> Unit = { note -> val pos = computeStarPosition(note, state.notes); scope.launch { camX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }; scope.launch { camY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }; zoom = 1.6f; activeNote = note; editing = false; full = false; sheet = true }
     LaunchedEffect(state.focusedNoteId) { val id = state.focusedNoteId ?: return@LaunchedEffect; val note = state.notes.firstOrNull { it.id == id } ?: return@LaunchedEffect; tab = AppTab.Galaxy; focusNote(note) }
@@ -210,10 +212,7 @@ private fun Dock(tab: AppTab, onTab: (AppTab) -> Unit) {
 
 @Composable
 private fun DI(icon: ImageVector, label: String, sel: Boolean, onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick).padding(4.dp)
-    ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick).padding(4.dp)) {
         Icon(icon, label, tint = if (sel) Blue else Color(0x66FFFFFF), modifier = Modifier.size(22.dp))
         Text(label, color = if (sel) Blue else Color(0x66FFFFFF), fontSize = 10.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
     }

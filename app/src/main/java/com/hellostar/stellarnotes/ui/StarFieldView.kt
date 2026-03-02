@@ -40,18 +40,19 @@ private data class BgStar(
 
 fun computeStarPosition(note: Note, all: List<Note>): StarPos {
     val sorted = all.sortedWith(
-        compareByDescending<Note> { it.pinned }.thenBy { it.createdAt }
+        compareByDescending<Note> { it.starred }.thenBy { it.createdAt } // Starred in center
     )
     val idx = sorted.indexOfFirst { it.id == note.id }.coerceAtLeast(0)
-    val ring = idx / 10 + 1
-    val slot = idx % 10
-    val angleDeg = slot * 36f + ring * 15f
-    val rad = Math.toRadians(angleDeg.toDouble())
-    val dist = if (note.pinned) 75f else 130f + ring * 40f
+    
+    // Golden spiral layout
+    val phi = (1 + sqrt(5.0)) / 2
+    val angleRad = idx * phi * Math.PI * 0.5
+    val dist = if (note.starred) 40.0 + idx * 8.0 else 100.0 + idx * 12.0
+    
     return StarPos(
-        x = (cos(rad) * dist).toFloat(),
-        y = (sin(rad) * dist * 0.72f).toFloat(),
-        z = ring * 30f - (if (note.pinned) 20f else 0f)
+        x = (cos(angleRad) * dist).toFloat(),
+        y = (sin(angleRad) * dist * 0.72).toFloat(),
+        z = (idx * 2.5f).coerceAtMost(300f)
     )
 }
 
@@ -68,7 +69,7 @@ fun StarFieldView(
 ) {
     val bgStars = remember {
         val rng = java.util.Random(42L)
-        List(200) {
+        List(250) {
             BgStar(
                 x = rng.nextFloat(), y = rng.nextFloat(),
                 size = rng.nextFloat() * 2.2f + 0.3f,
@@ -91,14 +92,14 @@ fun StarFieldView(
     val shootT by inf.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(7000, easing = LinearEasing),
+            animation = tween(8000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ), label = "shoot"
     )
     val pulse by inf.animateFloat(
         initialValue = 0f, targetValue = 6.2832f,
         animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
+            animation = tween(3500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ), label = "pulse"
     )
@@ -106,21 +107,20 @@ fun StarFieldView(
     val labelPaint = remember {
         NativePaint().apply {
             isAntiAlias = true
-            setShadowLayer(4f, 0f, 0f, android.graphics.Color.BLACK)
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.parseColor("#88000000"))
         }
     }
 
     val bg = Brush.verticalGradient(
         listOf(
-            Color(0xFF010510),
-            Color(0xFF031025),
-            Color(0xFF061838),
+            Color(0xFF02040A),
+            Color(0xFF040A1A),
+            Color(0xFF08142A),
             Color(0xFF0A1E48),
-            Color(0xFF081530)
+            Color(0xFF061022)
         )
     )
 
-    // Capture latest state for pointer input without restarting the gesture
     val currentCamX by rememberUpdatedState(camX)
     val currentCamY by rememberUpdatedState(camY)
     val currentCamZoom by rememberUpdatedState(camZoom)
@@ -130,7 +130,7 @@ fun StarFieldView(
         modifier = Modifier
             .fillMaxSize()
             .background(bg)
-            .pointerInput(notes) { // Only restart if notes list changes
+            .pointerInput(notes) {
                 detectTapGestures(
                     onDoubleTap = { onResetCamera() },
                     onTap = { tap ->
@@ -145,9 +145,8 @@ fun StarFieldView(
                             val dep = 1f / (1f + p.z.absoluteValue / 220f)
                             val sx = cx + (p.x + currentCamX + tx) * dep * currentCamZoom
                             val sy = cy + (p.y + currentCamY + ty) * dep * currentCamZoom
-                            val r = (if (n.pinned) 12f else 7f) * dep * (if (n.starred) 1.3f else 1f) * currentCamZoom
-                            // Generous touch target (at least 80px radius)
-                            val hitRadius = (r * 4f).coerceAtLeast(80f)
+                            val r = 8f * dep * (if (n.starred) 1.5f else 1f) * currentCamZoom
+                            val hitRadius = (r * 4f).coerceAtLeast(90f)
                             val dx = tap.x - sx
                             val dy = tap.y - sy
                             val dist = sqrt(dx * dx + dy * dy)
@@ -174,7 +173,7 @@ fun StarFieldView(
             val tx = tilt.x * 80f
             val ty = tilt.y * 80f
 
-            // ===== Layer 1: Background twinkling stars (with parallax) =====
+            // ===== Background twinkling stars =====
             for (s in bgStars) {
                 val px = when (s.layer) { 0 -> 0.05f; 1 -> 0.15f; else -> 0.3f }
                 val vx = s.x * w + (camX * px + tx * px) * camZoom
@@ -184,32 +183,32 @@ fun StarFieldView(
                 val twinkle = sin(time * s.speed + s.phase) * 0.5f + 0.5f
                 val a = s.baseAlpha * (0.25f + twinkle * 0.75f)
                 val c = when (s.layer) {
-                    0 -> Color(0xFFA0B0D0)
-                    1 -> Color(0xFFBBCCEE)
-                    else -> Color(0xFFDDE8FF)
+                    0 -> Color(0xFF90A4CE)
+                    1 -> Color(0xFFB4C8F0)
+                    else -> Color(0xFFE6F0FF)
                 }
-                val r = s.size * (0.8f + camZoom * 0.2f) // Slight zoom effect on bg
+                val r = s.size * (0.8f + camZoom * 0.2f)
                 if (r > 1.5f) {
-                    drawCircle(c.copy(alpha = a * 0.1f), r * 4f, Offset(bx, by))
-                    drawCircle(c.copy(alpha = a * 0.25f), r * 2f, Offset(bx, by))
+                    drawCircle(c.copy(alpha = a * 0.15f), r * 5f, Offset(bx, by))
+                    drawCircle(c.copy(alpha = a * 0.3f), r * 2.5f, Offset(bx, by))
                 }
                 drawCircle(c.copy(alpha = a), r, Offset(bx, by))
             }
 
-            // ===== Layer 2: Nebula glow patches (with parallax) =====
+            // ===== Nebula glow patches =====
             val n1x = cx + (w * 0.2f - cx + camX * 0.2f + tx * 6f) * camZoom
             val n1y = cy + (h * 0.15f - cy + camY * 0.2f + ty * 6f) * camZoom
-            drawCircle(Color(0xFF1A2B6B).copy(alpha = 0.06f), 240f * camZoom, Offset(n1x, n1y))
+            drawCircle(Color(0xFF16245A).copy(alpha = 0.08f), 260f * camZoom, Offset(n1x, n1y))
 
             val n2x = cx + (w * 0.78f - cx + camX * 0.2f + tx * 4f) * camZoom
             val n2y = cy + (h * 0.5f - cy + camY * 0.2f + ty * 4f) * camZoom
-            drawCircle(Color(0xFF2B1A5B).copy(alpha = 0.05f), 200f * camZoom, Offset(n2x, n2y))
+            drawCircle(Color(0xFF2B1A5B).copy(alpha = 0.07f), 220f * camZoom, Offset(n2x, n2y))
 
             val n3x = cx + (w * 0.45f - cx + camX * 0.2f + tx * 5f) * camZoom
             val n3y = cy + (h * 0.82f - cy + camY * 0.2f + ty * 5f) * camZoom
-            drawCircle(Color(0xFF0A2A5A).copy(alpha = 0.06f), 280f * camZoom, Offset(n3x, n3y))
+            drawCircle(Color(0xFF061D42).copy(alpha = 0.09f), 300f * camZoom, Offset(n3x, n3y))
 
-            // ===== Layer 3: Shooting star =====
+            // ===== Shooting star =====
             if (shootT < 0.2f) {
                 val t = shootT / 0.2f
                 val sx = w * 0.82f; val sy = h * 0.06f
@@ -218,76 +217,63 @@ fun StarFieldView(
                 val curY = sy + (ey - sy) * t
                 val dirX = ex - sx; val dirY = ey - sy
                 val len = sqrt(dirX * dirX + dirY * dirY)
-                val tailL = 90f
+                val tailL = 120f
                 val tailX = curX - dirX / len * tailL
                 val tailY = curY - dirY / len * tailL
-                val alpha = (1f - t) * 0.8f
-                drawLine(Color.White.copy(alpha = alpha * 0.3f),
-                    Offset(tailX, tailY), Offset(curX, curY), 2f)
-                drawCircle(Color.White.copy(alpha = alpha), 2.5f, Offset(curX, curY))
+                val alpha = (1f - t) * 0.9f
+                drawLine(Color.White.copy(alpha = alpha * 0.4f),
+                    Offset(tailX, tailY), Offset(curX, curY), 3f)
+                drawCircle(Color.White.copy(alpha = alpha), 3f, Offset(curX, curY))
             }
 
-            // ===== Layer 4: Note stars =====
-            for (note in notes) {
+            // ===== Central Galaxy Core Glow =====
+            val coreX = cx + (camX + tx) * camZoom
+            val coreY = cy + (camY + ty) * camZoom
+            drawCircle(Color(0xFFFFD86B).copy(alpha = 0.03f), 150f * camZoom, Offset(coreX, coreY))
+            drawCircle(Color(0xFF9FD4FF).copy(alpha = 0.05f), 80f * camZoom, Offset(coreX, coreY))
+
+            // ===== Note stars (Golden Spiral Layout) =====
+            for (note in notes.reversed()) { // Draw distant stars first
                 val pos = computeStarPosition(note, notes)
                 val depth = 1f / (1f + pos.z.absoluteValue / 220f)
                 val sx = cx + (pos.x + camX + tx) * depth * camZoom
                 val sy = cy + (pos.y + camY + ty) * depth * camZoom
-                val baseR = if (note.pinned) 13f else 8f
-                val mul = if (note.starred) 1.35f else 1f
+                val baseR = 8f
+                val mul = if (note.starred) 1.4f else 1f
                 val r = baseR * depth * mul * camZoom
 
-                // Don't draw if completely off-screen (optimization)
                 if (sx < -100 || sx > w + 100 || sy < -100 || sy > h + 100) continue
 
-                val col = when {
-                    note.starred -> Color(0xFFFFD86B)
-                    note.pinned -> Color(0xFF9FD4FF)
-                    else -> Color(0xFFD7E7FF)
-                }
+                val col = if (note.starred) Color(0xFFFFD86B) else Color(0xFFD7E7FF)
+                val glowPulse = if (note.starred) 1f + sin(pulse + note.id.toFloat()) * 0.2f else 1f
 
-                // Pulsing glow for pinned/starred
-                val glowPulse = if (note.pinned || note.starred) {
-                    1f + sin(pulse + note.id.toFloat()) * 0.15f
-                } else 1f
-
-                // Multi-layer glow halo
-                drawCircle(col.copy(alpha = 0.03f), r * 7f * glowPulse, Offset(sx, sy))
-                drawCircle(col.copy(alpha = 0.06f), r * 4.5f * glowPulse, Offset(sx, sy))
-                drawCircle(col.copy(alpha = 0.14f), r * 2.5f, Offset(sx, sy))
-                drawCircle(col.copy(alpha = 0.35f), r * 1.5f, Offset(sx, sy))
+                // Glow layers
+                drawCircle(col.copy(alpha = 0.04f), r * 8f * glowPulse, Offset(sx, sy))
+                drawCircle(col.copy(alpha = 0.08f), r * 5f * glowPulse, Offset(sx, sy))
+                drawCircle(col.copy(alpha = 0.18f), r * 3f, Offset(sx, sy))
+                drawCircle(col.copy(alpha = 0.4f), r * 1.8f, Offset(sx, sy))
                 // Core
                 drawCircle(col, r, Offset(sx, sy))
-                // Bright center
-                drawCircle(Color.White.copy(alpha = 0.55f), r * 0.35f, Offset(sx, sy))
+                drawCircle(Color.White.copy(alpha = 0.7f), r * 0.4f, Offset(sx, sy))
 
-                // Cross rays for starred notes
+                // Starred Cross rays
                 if (note.starred) {
-                    val rl = r * 4f
-                    drawLine(col.copy(alpha = 0.15f), Offset(sx - rl, sy), Offset(sx + rl, sy), 1f * camZoom)
-                    drawLine(col.copy(alpha = 0.15f), Offset(sx, sy - rl), Offset(sx, sy + rl), 1f * camZoom)
+                    val rl = r * 4.5f
+                    drawLine(col.copy(alpha = 0.25f), Offset(sx - rl, sy), Offset(sx + rl, sy), 1.5f * camZoom)
+                    drawLine(col.copy(alpha = 0.25f), Offset(sx, sy - rl), Offset(sx, sy + rl), 1.5f * camZoom)
                     val d45 = rl * 0.7f
-                    drawLine(col.copy(alpha = 0.08f), Offset(sx - d45, sy - d45), Offset(sx + d45, sy + d45), 0.8f * camZoom)
-                    drawLine(col.copy(alpha = 0.08f), Offset(sx + d45, sy - d45), Offset(sx - d45, sy + d45), 0.8f * camZoom)
-                }
-
-                // Pin indicator ring
-                if (note.pinned && !note.starred) {
-                    drawCircle(col.copy(alpha = 0.25f), r * 2f, Offset(sx, sy),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f * camZoom))
+                    drawLine(col.copy(alpha = 0.12f), Offset(sx - d45, sy - d45), Offset(sx + d45, sy + d45), 1f * camZoom)
+                    drawLine(col.copy(alpha = 0.12f), Offset(sx + d45, sy - d45), Offset(sx - d45, sy + d45), 1f * camZoom)
                 }
 
                 // Title label
-                val title = note.title.take(6)
-                val la = (depth * 255).toInt().coerceIn(50, 255)
-                labelPaint.color = when {
-                    note.starred -> android.graphics.Color.argb(la, 255, 216, 107)
-                    note.pinned -> android.graphics.Color.argb(la, 159, 212, 255)
-                    else -> android.graphics.Color.argb(la, 190, 210, 240)
-                }
-                labelPaint.textSize = (22f * depth * camZoom).coerceIn(10f, 40f)
+                val title = note.title.take(8)
+                val la = (depth * 255).toInt().coerceIn(60, 255)
+                labelPaint.color = if (note.starred) android.graphics.Color.argb(la, 255, 216, 107)
+                                   else android.graphics.Color.argb(la, 215, 231, 255)
+                labelPaint.textSize = (24f * depth * camZoom).coerceIn(12f, 45f)
                 drawContext.canvas.nativeCanvas.drawText(
-                    title, sx + r + 8f * camZoom, sy + labelPaint.textSize * 0.35f, labelPaint
+                    title, sx + r + 10f * camZoom, sy + labelPaint.textSize * 0.35f, labelPaint
                 )
             }
         }

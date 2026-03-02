@@ -22,11 +22,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -44,8 +47,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hellostar.stellarnotes.data.Note
+import kotlinx.coroutines.launch
 
 private val DeepBlue = Color(0xFF040A1E)
 private val StarGold = Color(0xFFFFD86B)
@@ -87,10 +93,7 @@ private fun IntroScreen(onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(40.dp)
             ) {
-                Text(
-                    text = "\u2728",
-                    fontSize = 72.sp
-                )
+                Text(text = "\u2728", fontSize = 72.sp)
                 Spacer(Modifier.height(16.dp))
                 Text(
                     text = "\u661f\u6f9c\u7b14\u8bb0",
@@ -113,11 +116,11 @@ private fun IntroScreen(onDismiss: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 val features = listOf(
+                    "\uD83D\uDC46  \u5355\u6307\u6ed1\u52a8\u6f2b\u6e38\u661f\u7a7a",
+                    "\uD83D\uDD0D  \u53cc\u6307\u634f\u5408\u7f29\u653e\u89c6\u89d2",
                     "\u2b50  \u661f\u6807\u7b14\u8bb0\u53d8\u6210\u91d1\u8272\u661f\u4f53",
                     "\uD83D\uDCCC  \u7f6e\u9876\u7b14\u8bb0\u79bb\u4f60\u6700\u8fd1",
-                    "\uD83D\uDD0D  \u667a\u80fd\u641c\u7d22 + \u4e1d\u6ed1\u8fd0\u955c\u5b9a\u4f4d",
-                    "\uD83D\uDCF1  \u8f7b\u6643\u624b\u673a\uff0c\u661f\u7a7a\u8ddf\u7740\u52a8",
-                    "\u2604\uFE0F  \u6d41\u661f\u5212\u8fc7\u6df1\u84dd\u661f\u7a7a"
+                    "\uD83D\uDCF1  \u8f7b\u6643\u624b\u673a\uff0c\u661f\u7a7a\u8ddf\u7740\u52a8"
                 )
                 for (f in features) {
                     Text(
@@ -141,19 +144,36 @@ private fun IntroScreen(onDismiss: () -> Unit) {
 @Composable
 private fun MainScreen(viewModel: StellarViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var editing by remember { mutableStateOf<Note?>(null) }
-    var showEditor by remember { mutableStateOf(false) }
+    
+    // UI states
+    var activeNote by remember { mutableStateOf<Note?>(null) }
+    var isEditing by remember { mutableStateOf(false) } // true: Editor, false: Reader
+    var showSheet by remember { mutableStateOf(false) }
+    
+    // Camera states
     val tilt = rememberTiltState()
-
     val cameraX = remember { Animatable(0f) }
     val cameraY = remember { Animatable(0f) }
+    var cameraZoom by remember { mutableFloatStateOf(1f) }
+    val coroutineScope = rememberCoroutineScope()
 
+    // Focus camera on specific note
     LaunchedEffect(state.focusedNoteId) {
         val noteId = state.focusedNoteId ?: return@LaunchedEffect
         val note = state.notes.firstOrNull { it.id == noteId } ?: return@LaunchedEffect
         val pos = computeStarPosition(note, state.notes)
-        cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow))
-        cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow))
+        coroutineScope.launch {
+            cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow))
+        }
+        coroutineScope.launch {
+            cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow))
+        }
+        cameraZoom = 1.8f // Zoom in when focused
+        
+        // Open reader mode
+        activeNote = note
+        isEditing = false
+        showSheet = true
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = DeepBlue) {
@@ -163,59 +183,104 @@ private fun MainScreen(viewModel: StellarViewModel) {
                 tilt = tilt,
                 camX = cameraX.value,
                 camY = cameraY.value,
+                camZoom = cameraZoom,
+                onPanZoom = { dx, dy, zoom ->
+                    coroutineScope.launch {
+                        cameraX.snapTo(cameraX.value + dx / cameraZoom)
+                        cameraY.snapTo(cameraY.value + dy / cameraZoom)
+                    }
+                    cameraZoom = (cameraZoom * zoom).coerceIn(0.2f, 4.0f)
+                },
+                onResetCamera = {
+                    coroutineScope.launch { cameraX.animateTo(0f) }
+                    coroutineScope.launch { cameraY.animateTo(0f) }
+                    cameraZoom = 1f
+                },
                 onTapNote = { note ->
-                    editing = note
-                    showEditor = true
+                    // Focus camera
+                    val pos = computeStarPosition(note, state.notes)
+                    coroutineScope.launch { cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }
+                    coroutineScope.launch { cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }
+                    cameraZoom = 1.5f
+                    
+                    // Open reader
+                    activeNote = note
+                    isEditing = false
+                    showSheet = true
                 }
             )
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 14.dp, end = 14.dp, top = 40.dp)
-            ) {
-                SearchBar(
-                    query = state.query,
-                    results = state.searchResults,
-                    onQueryChange = { viewModel.onQueryChange(it) },
-                    onSelect = { note -> viewModel.focusOn(note.id) }
-                )
-            }
-
-            FloatingActionButton(
-                onClick = {
-                    editing = null
-                    showEditor = true
-                },
-                containerColor = Color(0xFF1A3A7A),
-                contentColor = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(24.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-            }
-
+            // Search Bar (hide when sheet is open)
             AnimatedVisibility(
-                visible = showEditor,
+                visible = !showSheet,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 14.dp, top = 40.dp)
+                ) {
+                    SearchBar(
+                        query = state.query,
+                        results = state.searchResults,
+                        onQueryChange = { viewModel.onQueryChange(it) },
+                        onSelect = { note -> viewModel.focusOn(note.id) }
+                    )
+                }
+            }
+
+            // FAB (hide when sheet is open)
+            AnimatedVisibility(
+                visible = !showSheet,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp)
+            ) {
+                FloatingActionButton(
+                    onClick = {
+                        activeNote = null
+                        isEditing = true
+                        showSheet = true
+                    },
+                    containerColor = Color(0xFF1A3A7A),
+                    contentColor = Color.White
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "New")
+                }
+            }
+
+            // Bottom Sheet (Reader or Editor)
+            AnimatedVisibility(
+                visible = showSheet,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                NoteEditorSheet(
-                    note = editing,
-                    onDismiss = { showEditor = false },
-                    onSave = { old, title, content, pinned, starred ->
-                        viewModel.addOrUpdate(old, title, content, pinned, starred)
-                        showEditor = false
-                    },
-                    onToggleStar = { viewModel.toggleStar(it) },
-                    onTogglePin = { viewModel.togglePin(it) },
-                    onDelete = {
-                        viewModel.deleteNote(it)
-                        showEditor = false
-                    }
-                )
+                if (isEditing) {
+                    NoteEditorSheet(
+                        note = activeNote,
+                        onDismiss = { showSheet = false },
+                        onSave = { old, title, content, pinned, starred ->
+                            viewModel.addOrUpdate(old, title, content, pinned, starred)
+                            showSheet = false
+                        },
+                        onToggleStar = { viewModel.toggleStar(it) },
+                        onTogglePin = { viewModel.togglePin(it) },
+                        onDelete = {
+                            viewModel.deleteNote(it)
+                            showSheet = false
+                        }
+                    )
+                } else {
+                    NoteReaderSheet(
+                        note = activeNote!!,
+                        onDismiss = { showSheet = false },
+                        onEdit = { isEditing = true },
+                        onToggleStar = { viewModel.toggleStar(it); activeNote = it.copy(starred = !it.starred) },
+                        onTogglePin = { viewModel.togglePin(it); activeNote = it.copy(pinned = !it.pinned) }
+                    )
+                }
             }
         }
     }
@@ -291,6 +356,89 @@ private fun SearchBar(
 }
 
 @Composable
+private fun NoteReaderSheet(
+    note: Note,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onToggleStar: (Note) -> Unit,
+    onTogglePin: (Note) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(400.dp),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header
+            Row(verticalAlignment = Alignment.Top) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = note.title,
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "创建于: " + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date(note.createdAt)),
+                        color = Color(0x77FFFFFF),
+                        fontSize = 12.sp
+                    )
+                }
+                
+                IconButton(onClick = { onTogglePin(note) }) {
+                    Text(
+                        text = if (note.pinned) "\uD83D\uDCCC" else "\uD83D\uDCCD",
+                        fontSize = 18.sp
+                    )
+                }
+                IconButton(onClick = { onToggleStar(note) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = null,
+                        tint = if (note.starred) StarGold else Color(0x66FFFFFF)
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, null, tint = Color.White)
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            
+            // Content
+            val scrollState = rememberScrollState()
+            Text(
+                text = note.content.ifBlank { "（空）" },
+                color = Color(0xEEFFFFFF),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
+            )
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Edit FAB
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                FloatingActionButton(
+                    onClick = onEdit,
+                    containerColor = PinBlue,
+                    contentColor = DeepBlue
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
 private fun NoteEditorSheet(
     note: Note?,
     onDismiss: () -> Unit,
@@ -305,7 +453,7 @@ private fun NoteEditorSheet(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(360.dp),
+            .height(400.dp),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         colors = CardDefaults.cardColors(containerColor = CardBg)
     ) {

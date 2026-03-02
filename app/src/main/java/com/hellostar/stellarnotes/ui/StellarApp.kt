@@ -1,6 +1,7 @@
 package com.hellostar.stellarnotes.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -8,13 +9,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,15 +27,20 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -44,8 +50,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -63,6 +67,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,9 +81,9 @@ import kotlinx.coroutines.launch
 private val DeepBlue = Color(0xFF040A1E)
 private val StarGold = Color(0xFFFFD86B)
 private val ActionBlue = Color(0xFF5A9DFF)
-private val GlassBg = Color(0x33ffffff)
-private val GlassBorder = Color(0x22ffffff)
 private val CardBg = Color(0xEE0A1530)
+
+enum class AppTab { Galaxy, List, Stats }
 
 @Composable
 fun StellarApp(viewModel: StellarViewModel) {
@@ -101,7 +107,7 @@ private fun IntroScreen(onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(40.dp)
             ) {
-                Text(text = "\u2728", fontSize = 72.sp) // ✨
+                Text(text = "✨", fontSize = 72.sp)
                 Spacer(Modifier.height(16.dp))
                 Text(
                     text = "星澜笔记",
@@ -153,6 +159,7 @@ private fun IntroScreen(onDismiss: () -> Unit) {
 private fun MainScreen(viewModel: StellarViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     
+    var currentTab by remember { mutableStateOf(AppTab.Galaxy) }
     var activeNote by remember { mutableStateOf<Note?>(null) }
     var isEditing by remember { mutableStateOf(false) }
     var showSheet by remember { mutableStateOf(false) }
@@ -167,13 +174,11 @@ private fun MainScreen(viewModel: StellarViewModel) {
     LaunchedEffect(state.focusedNoteId) {
         val noteId = state.focusedNoteId ?: return@LaunchedEffect
         val note = state.notes.firstOrNull { it.id == noteId } ?: return@LaunchedEffect
+        
+        currentTab = AppTab.Galaxy
         val pos = computeStarPosition(note, state.notes)
-        coroutineScope.launch {
-            cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow))
-        }
-        coroutineScope.launch {
-            cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow))
-        }
+        coroutineScope.launch { cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }
+        coroutineScope.launch { cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }
         cameraZoom = 1.8f
         
         activeNote = note
@@ -184,6 +189,8 @@ private fun MainScreen(viewModel: StellarViewModel) {
 
     Surface(modifier = Modifier.fillMaxSize(), color = DeepBlue) {
         Box(modifier = Modifier.fillMaxSize()) {
+            
+            // Background Layer: StarField View
             StarFieldView(
                 notes = state.notes,
                 tilt = tilt,
@@ -203,29 +210,58 @@ private fun MainScreen(viewModel: StellarViewModel) {
                     cameraZoom = 1f
                 },
                 onTapNote = { note ->
-                    val pos = computeStarPosition(note, state.notes)
-                    coroutineScope.launch { cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }
-                    coroutineScope.launch { cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }
-                    cameraZoom = 1.6f
-                    
-                    activeNote = note
-                    isEditing = false
-                    isFullScreen = false
-                    showSheet = true
+                    if (currentTab == AppTab.Galaxy) {
+                        val pos = computeStarPosition(note, state.notes)
+                        coroutineScope.launch { cameraX.animateTo(-pos.x, spring(stiffness = Spring.StiffnessLow)) }
+                        coroutineScope.launch { cameraY.animateTo(-pos.y, spring(stiffness = Spring.StiffnessLow)) }
+                        cameraZoom = 1.6f
+                        
+                        activeNote = note
+                        isEditing = false
+                        isFullScreen = false
+                        showSheet = true
+                    }
                 }
             )
 
+            // Foreground Layers based on Tab
             AnimatedVisibility(
-                visible = !showSheet,
-                enter = fadeIn(),
-                exit = fadeOut()
+                visible = currentTab == AppTab.List,
+                enter = fadeIn(), exit = fadeOut()
+            ) {
+                Box(modifier = Modifier.fillMaxSize().background(Color(0xBB040A1E))) {
+                    NoteListScreen(
+                        notes = state.notes,
+                        onNoteClick = { note ->
+                            activeNote = note
+                            isEditing = false
+                            isFullScreen = false
+                            showSheet = true
+                        }
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = currentTab == AppTab.Stats,
+                enter = fadeIn(), exit = fadeOut()
+            ) {
+                Box(modifier = Modifier.fillMaxSize().background(Color(0xBB040A1E))) {
+                    StatsScreen(notes = state.notes)
+                }
+            }
+
+            // Search Bar (Only in Galaxy mode, hidden when sheet is open)
+            AnimatedVisibility(
+                visible = currentTab == AppTab.Galaxy && !showSheet,
+                enter = fadeIn(), exit = fadeOut()
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, top = 48.dp)
                 ) {
-                    SearchBarGlass(
+                    CustomSearchBar(
                         query = state.query,
                         results = state.searchResults,
                         onQueryChange = { viewModel.onQueryChange(it) },
@@ -234,11 +270,11 @@ private fun MainScreen(viewModel: StellarViewModel) {
                 }
             }
 
+            // FAB (Hidden when sheet is open)
             AnimatedVisibility(
                 visible = !showSheet,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp)
+                enter = fadeIn(), exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 100.dp, end = 24.dp)
             ) {
                 FloatingActionButton(
                     onClick = {
@@ -254,6 +290,20 @@ private fun MainScreen(viewModel: StellarViewModel) {
                 }
             }
 
+            // Bottom Navigation Dock
+            AnimatedVisibility(
+                visible = !showSheet,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+            ) {
+                BottomDock(
+                    currentTab = currentTab,
+                    onTabSelected = { currentTab = it }
+                )
+            }
+
+            // Bottom Sheet (Reader or Editor)
             AnimatedVisibility(
                 visible = showSheet,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -304,7 +354,7 @@ private fun MainScreen(viewModel: StellarViewModel) {
 }
 
 @Composable
-private fun SearchBarGlass(
+private fun CustomSearchBar(
     query: String,
     results: List<SearchResult>,
     onQueryChange: (String) -> Unit,
@@ -314,27 +364,27 @@ private fun SearchBarGlass(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(GlassBg)
-            .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
-            .padding(12.dp)
+            .background(Color(0x66020815)) // Deep dark transparent
+            .border(1.dp, Color(0x335A9DFF), RoundedCornerShape(20.dp))
+            .padding(16.dp)
     ) {
-        OutlinedTextField(
+        BasicTextField(
             value = query,
             onValueChange = onQueryChange,
-            label = { Text("搜索星群笔记…", color = Color(0xAAFFFFFF)) },
+            textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
+            cursorBrush = SolidColor(ActionBlue),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = ActionBlue,
-                unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                cursorColor = ActionBlue
-            )
+            decorationBox = { innerTextField ->
+                if (query.isEmpty()) {
+                    Text("搜索星群笔记...", color = Color(0x66FFFFFF), fontSize = 16.sp)
+                }
+                innerTextField()
+            }
         )
         
         if (query.isNotBlank() && results.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             LazyColumn(modifier = Modifier.height(200.dp)) {
                 items(results.take(6), key = { it.note.id }) { r ->
                     Row(
@@ -342,11 +392,11 @@ private fun SearchBarGlass(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .clickable { onSelect(r.note) }
-                            .padding(12.dp),
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (r.note.starred) {
-                            Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
                         }
                         Column(modifier = Modifier.weight(1f)) {
@@ -369,7 +419,6 @@ private fun SearchBarGlass(
                             }
                         }
                         Spacer(Modifier.width(12.dp))
-                        // Relevance Energy Bar
                         Box(
                             modifier = Modifier
                                 .width(40.dp)
@@ -392,6 +441,132 @@ private fun SearchBarGlass(
 }
 
 @Composable
+private fun BottomDock(currentTab: AppTab, onTabSelected: (AppTab) -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color(0xCC040A1E))
+            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(24.dp))
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+        DockItem(
+            icon = Icons.Default.Explore,
+            label = "星空",
+            isSelected = currentTab == AppTab.Galaxy,
+            onClick = { onTabSelected(AppTab.Galaxy) }
+        )
+        DockItem(
+            icon = Icons.Default.FormatListBulleted,
+            label = "列表",
+            isSelected = currentTab == AppTab.List,
+            onClick = { onTabSelected(AppTab.List) }
+        )
+        DockItem(
+            icon = Icons.Default.Info,
+            label = "档案",
+            isSelected = currentTab == AppTab.Stats,
+            onClick = { onTabSelected(AppTab.Stats) }
+        )
+    }
+}
+
+@Composable
+private fun DockItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, isSelected: Boolean, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick).padding(4.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (isSelected) ActionBlue else Color(0x88FFFFFF),
+            modifier = Modifier.size(24.dp)
+        )
+        Text(
+            text = label,
+            color = if (isSelected) ActionBlue else Color(0x88FFFFFF),
+            fontSize = 10.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+private fun NoteListScreen(notes: List<Note>, onNoteClick: (Note) -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(top = 48.dp, start = 16.dp, end = 16.dp)) {
+        Text("所有笔记", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(16.dp))
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 120.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(notes.sortedByDescending { it.updatedAt }, key = { it.id }) { note ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { onNoteClick(note) },
+                    colors = CardDefaults.cardColors(containerColor = Color(0x44FFFFFF)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (note.starred) {
+                                Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = note.title,
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = note.content.ifBlank { "无内容" },
+                            color = Color(0xAAFFFFFF),
+                            fontSize = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatsScreen(notes: List<Note>) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(top = 48.dp, start = 24.dp, end = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("星际档案", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(40.dp))
+        
+        Box(modifier = Modifier.size(160.dp).clip(CircleShape).background(Color(0x225A9DFF)), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("${notes.size}", color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold)
+                Text("宇宙星辰", color = ActionBlue, fontSize = 14.sp)
+            }
+        }
+        
+        Spacer(Modifier.height(40.dp))
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.Star, null, tint = StarGold, modifier = Modifier.size(32.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("${notes.count { it.starred }}", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("金色星标", color = Color(0xAAFFFFFF), fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
 private fun NoteReaderContent(
     note: Note,
     isFullScreen: Boolean,
@@ -401,7 +576,6 @@ private fun NoteReaderContent(
     onToggleStar: (Note) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-        // Header
         Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -439,7 +613,6 @@ private fun NoteReaderContent(
 
         Spacer(Modifier.height(20.dp))
         
-        // Content
         val scrollState = rememberScrollState()
         Text(
             text = note.content.ifBlank { "开始写下你的星际灵感..." },
@@ -514,36 +687,37 @@ private fun NoteEditorContent(
 
         Spacer(Modifier.height(12.dp))
 
-        OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
-            placeholder = { Text("输入标题...", color = Color(0x55FFFFFF)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = ActionBlue,
-                unfocusedBorderColor = Color(0x33FFFFFF),
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                cursorColor = ActionBlue
+        // Custom BasicTextField for seamless input
+        Box(modifier = Modifier.fillMaxWidth().background(Color(0x11FFFFFF), RoundedCornerShape(12.dp)).padding(12.dp)) {
+            BasicTextField(
+                value = title,
+                onValueChange = { title = it },
+                textStyle = TextStyle(color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                cursorBrush = SolidColor(ActionBlue),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                decorationBox = { inner ->
+                    if (title.isEmpty()) Text("输入标题...", color = Color(0x55FFFFFF), fontSize = 20.sp)
+                    inner()
+                }
             )
-        )
+        }
 
         Spacer(Modifier.height(12.dp))
 
-        OutlinedTextField(
-            value = content,
-            onValueChange = { content = it },
-            placeholder = { Text("记录下此刻的灵感...", color = Color(0x55FFFFFF)) },
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = ActionBlue,
-                unfocusedBorderColor = Color(0x33FFFFFF),
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                cursorColor = ActionBlue
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0x11FFFFFF), RoundedCornerShape(12.dp)).padding(12.dp)) {
+            BasicTextField(
+                value = content,
+                onValueChange = { content = it },
+                textStyle = TextStyle(color = Color.White, fontSize = 16.sp, lineHeight = 24.sp),
+                cursorBrush = SolidColor(ActionBlue),
+                modifier = Modifier.fillMaxSize(),
+                decorationBox = { inner ->
+                    if (content.isEmpty()) Text("记录下此刻的灵感...", color = Color(0x55FFFFFF), fontSize = 16.sp)
+                    inner()
+                }
             )
-        )
+        }
 
         Spacer(Modifier.height(16.dp))
 

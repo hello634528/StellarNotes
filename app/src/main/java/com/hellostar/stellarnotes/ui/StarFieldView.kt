@@ -40,11 +40,10 @@ private data class BgStar(
 
 fun computeStarPosition(note: Note, all: List<Note>): StarPos {
     val sorted = all.sortedWith(
-        compareByDescending<Note> { it.starred }.thenBy { it.createdAt } // Starred in center
+        compareByDescending<Note> { it.starred }.thenBy { it.createdAt }
     )
     val idx = sorted.indexOfFirst { it.id == note.id }.coerceAtLeast(0)
     
-    // Golden spiral layout
     val phi = (1 + sqrt(5.0)) / 2
     val angleRad = idx * phi * Math.PI * 0.5
     val dist = if (note.starred) 40.0 + idx * 8.0 else 100.0 + idx * 12.0
@@ -195,18 +194,38 @@ fun StarFieldView(
                 drawCircle(c.copy(alpha = a), r, Offset(bx, by))
             }
 
-            // ===== Nebula glow patches =====
+            // ===== Nebula glow patches (Fixed: Using Radial Gradient instead of flat circles) =====
+            val drawNebula = { color: Color, radius: Float, center: Offset ->
+                if (radius > 0) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(color, Color.Transparent),
+                            center = center,
+                            radius = radius
+                        ),
+                        radius = radius,
+                        center = center
+                    )
+                }
+            }
+
             val n1x = cx + (w * 0.2f - cx + camX * 0.2f + tx * 6f) * camZoom
             val n1y = cy + (h * 0.15f - cy + camY * 0.2f + ty * 6f) * camZoom
-            drawCircle(Color(0xFF16245A).copy(alpha = 0.08f), 260f * camZoom, Offset(n1x, n1y))
+            drawNebula(Color(0x3316245A), 350f * camZoom, Offset(n1x, n1y))
 
             val n2x = cx + (w * 0.78f - cx + camX * 0.2f + tx * 4f) * camZoom
             val n2y = cy + (h * 0.5f - cy + camY * 0.2f + ty * 4f) * camZoom
-            drawCircle(Color(0xFF2B1A5B).copy(alpha = 0.07f), 220f * camZoom, Offset(n2x, n2y))
+            drawNebula(Color(0x222B1A5B), 300f * camZoom, Offset(n2x, n2y))
 
             val n3x = cx + (w * 0.45f - cx + camX * 0.2f + tx * 5f) * camZoom
             val n3y = cy + (h * 0.82f - cy + camY * 0.2f + ty * 5f) * camZoom
-            drawCircle(Color(0xFF061D42).copy(alpha = 0.09f), 300f * camZoom, Offset(n3x, n3y))
+            drawNebula(Color(0x2A061D42), 400f * camZoom, Offset(n3x, n3y))
+
+            // ===== Central Galaxy Core Glow (Fixed) =====
+            val coreX = cx + (camX + tx) * camZoom
+            val coreY = cy + (camY + ty) * camZoom
+            drawNebula(Color(0x22FFD86B), 250f * camZoom, Offset(coreX, coreY))
+            drawNebula(Color(0x339FD4FF), 120f * camZoom, Offset(coreX, coreY))
 
             // ===== Shooting star =====
             if (shootT < 0.2f) {
@@ -226,14 +245,8 @@ fun StarFieldView(
                 drawCircle(Color.White.copy(alpha = alpha), 3f, Offset(curX, curY))
             }
 
-            // ===== Central Galaxy Core Glow =====
-            val coreX = cx + (camX + tx) * camZoom
-            val coreY = cy + (camY + ty) * camZoom
-            drawCircle(Color(0xFFFFD86B).copy(alpha = 0.03f), 150f * camZoom, Offset(coreX, coreY))
-            drawCircle(Color(0xFF9FD4FF).copy(alpha = 0.05f), 80f * camZoom, Offset(coreX, coreY))
-
             // ===== Note stars (Golden Spiral Layout) =====
-            for (note in notes.reversed()) { // Draw distant stars first
+            for (note in notes.reversed()) { 
                 val pos = computeStarPosition(note, notes)
                 val depth = 1f / (1f + pos.z.absoluteValue / 220f)
                 val sx = cx + (pos.x + camX + tx) * depth * camZoom
@@ -247,11 +260,10 @@ fun StarFieldView(
                 val col = if (note.starred) Color(0xFFFFD86B) else Color(0xFFD7E7FF)
                 val glowPulse = if (note.starred) 1f + sin(pulse + note.id.toFloat()) * 0.2f else 1f
 
-                // Glow layers
-                drawCircle(col.copy(alpha = 0.04f), r * 8f * glowPulse, Offset(sx, sy))
-                drawCircle(col.copy(alpha = 0.08f), r * 5f * glowPulse, Offset(sx, sy))
-                drawCircle(col.copy(alpha = 0.18f), r * 3f, Offset(sx, sy))
-                drawCircle(col.copy(alpha = 0.4f), r * 1.8f, Offset(sx, sy))
+                // Smooth glowing halos
+                drawNebula(col.copy(alpha = 0.15f * glowPulse), r * 6f, Offset(sx, sy))
+                drawNebula(col.copy(alpha = 0.3f), r * 3f, Offset(sx, sy))
+                
                 // Core
                 drawCircle(col, r, Offset(sx, sy))
                 drawCircle(Color.White.copy(alpha = 0.7f), r * 0.4f, Offset(sx, sy))

@@ -8,6 +8,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
 class ChatApiClient {
@@ -18,7 +20,22 @@ class ChatApiClient {
         .build()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
 
-    private class Acc(var id: String = "", var name: String = "", val args: StringBuilder = StringBuilder())
+    private class Acc(var id: String = "", var val StringBuilder = String
+Limited): {
+        body.byteStream().use { input ->
+            val out = ByteArrayOutputStream()
+            val buf = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val read = input.read(buf)
+                if (read <= 0) break
+                total += read
+                if (total > maxBytes) return null
+                out.write(buf, 0, read)
+            }
+            return out.toString(Charsets.UTF_8.name())
+        }
+    }
 
     suspend fun fetchModels(baseUrl: String, apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
@@ -48,7 +65,7 @@ class ChatApiClient {
                 val rb = response.body ?: return@withContext Result.failure(Exception("空响应"))
                 val len = rb.contentLength()
                 if (len > 2_000_000) return@withContext Result.failure(Exception("响应过大，无法解析模型列表"))
-                val body = rb.string().take(2_000_000)
+                val body = readBodyLimited(rb, 2_000_000) ?: return@withContext Result.failure(Exception("响应过大，无法解析模型列表"))
                 if (body.isBlank()) return@withContext Result.failure(Exception("空响应"))
 
                 // 只提取 id，限制数量和长度，避免设置页渲染过重

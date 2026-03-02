@@ -39,25 +39,31 @@ class ChatApiClient {
                 return@withContext Result.failure(Exception("URL 无效: $url"))
             }
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val err = response.body?.string()?.take(260) ?: ""
-                return@withContext Result.failure(Exception("HTTP ${response.code} $err"))
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val err = response.body?.string()?.take(260) ?: ""
+                    return@withContext Result.failure(Exception("HTTP ${response.code} $err"))
+                }
+
+                val body = response.body?.string().orEmpty()
+                if (body.isBlank()) return@withContext Result.failure(Exception("空响应"))
+
+                // 只提取 id，限制数量和长度，避免设置页渲染过重
+                val models = linkedSetOf<String>()
+                val idRegex = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"")
+                idRegex.findAll(body).forEach { m ->
+                    m.groupValues.getOrNull(1)
+                        ?.takeIf { it.isNotBlank() && it.length <= 80 }
+                        ?.let(models::add)
+                }
+
+                val cleaned = models.toList().sorted().take(40)
+                return@withContext if (cleaned.isEmpty()) {
+                    Result.failure(Exception("未解析到任何模型"))
+                } else {
+                    Result.success(cleaned)
+                }
             }
-
-            val body = response.body?.string().orEmpty()
-            if (body.isBlank()) return@withContext Result.failure(Exception("空响应"))
-
-            // 稳健策略：只提取 id 字段，避免解析不兼容结构导致崩溃/过量数据
-            val models = linkedSetOf<String>()
-            val idRegex = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"")
-            idRegex.findAll(body).forEach { m ->
-                m.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(models::add)
-            }
-
-            // UI 保护：最多返回 120 个，避免超大列表导致设置页一次性渲染过重
-            val cleaned = models.toList().sorted().take(120)
-            if (cleaned.isEmpty()) Result.failure(Exception("未解析到任何模型")) else Result.success(cleaned)
         } catch (t: Throwable) {
             Result.failure(Exception(t.message ?: "获取模型失败"))
         }

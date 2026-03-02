@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -23,55 +24,53 @@ class ChatApiClient {
 
     private class Acc(var id: String = "", var name: String = "", val args: StringBuilder = StringBuilder())
 
+    private fun idFromObject(item: JsonElement): String? = runCatching {
+        item.jsonObject["id"]?.jsonPrimitive?.content
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    private fun stringFromPrimitive(item: JsonElement): String? = runCatching {
+        item.jsonPrimitive.content
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
     suspend fun fetchModels(baseUrl: String, apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
             val urlInput = baseUrl.trim()
             if (urlInput.isBlank()) return@withContext Result.failure(Exception("Base URL 为空"))
             if (apiKey.isBlank()) return@withContext Result.failure(Exception("API Key 为空"))
 
-            val normalizedBase = if (urlInput.startsWith("http://") || urlInput.startsWith("https://")) {
-                urlInput
-            } else {
-                "https://$urlInput"
-            }
+            val normalizedBase = if (urlInput.startsWith("http://") || urlInput.startsWith("https://")) urlInput else "https://$urlInput"
             val url = normalizedBase.trimEnd('/') + "/v1/models"
 
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("Authorization", "Bearer $apiKey")
-                .get()
-                .build()
+            val reqBuilder = runCatching {
+                Request.Builder().url(url)
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .get()
+                    .build()
+            }.getOrElse { return@withContext Result.failure(Exception("URL 无效: $url")) }
 
-            val response = client.newCall(request).execute()
+            val response = client.newCall(reqBuilder).execute()
             if (!response.isSuccessful) {
-                val err = response.body?.string()?.take(200) ?: ""
+                val err = response.body?.string()?.take(260) ?: ""
                 return@withContext Result.failure(Exception("HTTP ${response.code} $err"))
             }
 
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) return@withContext Result.failure(Exception("空响应"))
 
-            // 兼容多种返回格式，避免解析异常导致闪退
             val models = mutableListOf<String>()
             runCatching {
                 val root = json.parseToJsonElement(body).jsonObject
-                // OpenAI: { data:[{id:"..."}] }
-                root["data"]?.jsonArray?.forEach { item ->
-                    item.jsonObject["id"]?.jsonPrimitive?.contentOrNull?.let { if (it.isNotBlank()) models.add(it) }
-                }
-                // Some providers: { models:["a","b"] } or { models:[{id:"..."}] }
+                root["data"]?.jsonArray?.forEach { item -> idFromObject(item)?.let(models::add) }
                 root["models"]?.jsonArray?.forEach { item ->
-                    val v = runCatching { item.jsonPrimitive.contentOrNull }.getOrNull()
-                    if (!v.isNullOrBlank()) models.add(v)
-                    runCatching { item.jsonObject["id"]?.jsonPrimitive?.contentOrNull }.getOrNull()?.let { if (!it.isNullOrBlank()) models.add(it) }
+                    stringFromPrimitive(item)?.let(models::add)
+                    idFromObject(item)?.let(models::add)
                 }
             }
 
-            // fallback regex
             if (models.isEmpty()) {
                 val regex = Regex("\\\"id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
                 regex.findAll(body).forEach { m ->
-                    m.groupValues.getOrNull(1)?.let { id -> if (id.isNotBlank()) models.add(id) }
+                    m.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(models::add)
                 }
             }
 
@@ -111,14 +110,20 @@ class ChatApiClient {
                             choice.delta?.content?.let { onContent(it) }
                             choice.delta?.toolCalls?.forEach { tc ->
                                 val a = tcMap.getOrPut(tc.index) { Acc() }
-                                tc.id?.let { a.id = it }; tc.function?.name?.let { a.name = it }; tc.function?.arguments?.let { a.args.append(it) }
+                                tc.id?.let { a.id = it }
+                                tc.function?.name?.let { a.name = it }
+                                tc.function?.arguments?.let { a.args.append(it) }
                             }
-                            if (choice.finishReason == "tool_calls") return@withContext StreamResult.ToolCalls(tcMap.values.map { AccumulatedToolCall(it.id, it.name, it.args.toString()) })
+                            if (choice.finishReason == "tool_calls") {
+                                return@withContext StreamResult.ToolCalls(tcMap.values.map { AccumulatedToolCall(it.id, it.name, it.args.toString()) })
+                            }
                         }
                     } catch (_: Exception) {}
                 }
             }
             StreamResult.Done
-        } catch (e: Exception) { StreamResult.Error(e.message ?: "Unknown error") }
+        } catch (e: Exception) {
+            StreamResult.Error(e.message ?: "Unknown error")
+        }
     }
 }
